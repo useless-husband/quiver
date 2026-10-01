@@ -7,6 +7,7 @@ pub mod bench;
 pub mod distance;
 pub mod error;
 pub mod index;
+pub mod quant;
 pub mod rng;
 
 #[cfg(test)]

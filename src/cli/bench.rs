@@ -123,6 +123,8 @@ pub fn ann(a: &Args) -> Result<(), String> {
     )?;
     let threads = a.list("threads", &[1usize])?;
     let build_threads = a.get("build-threads", 4usize)?;
+    let quants = a.list("quant", &["f32".to_string()])?;
+    let rerank = a.get("rerank", 4usize)?;
     let out = a.str("out");
     let seed = a.get("seed", 1u64)?;
     a.finish()?;
@@ -173,24 +175,54 @@ pub fn ann(a: &Args) -> Result<(), String> {
             Box::new(std::io::stdout())
         }
     };
-    for &t in &threads {
-        for &ef in &efs {
-            let p = sweep_point(&w, k, t, |q, out| {
-                out.extend(idx.search(q, k, ef).unwrap().iter().map(|nb| nb.id));
-            });
-            let line = format!(
-                "quiver,hnsw-f32,{dataset},{},{m},{efc},{ef},{k},{t},{build_threads},{:.4},{:.1},{:.1},{:.1},{build_s:.2},{index_mb:.1},{:.1}",
-                metric.name(),
-                p.recall,
-                p.qps,
-                p.p50_us,
-                p.p99_us,
-                peak_rss_bytes() as f64 / 1e6
-            );
-            if out.is_some() {
-                eprintln!("{line}");
+    for qname in &quants {
+        let quant =
+            quiver::quant::Quantization::parse(qname).ok_or(format!("unknown --quant {qname}"))?;
+        let t0 = Instant::now();
+        let codes = idx
+            .build_codes(quant, build_threads)
+            .map_err(|e| e.to_string())?;
+        let (variant, mb) = match &codes {
+            None => ("hnsw-f32".to_string(), index_mb),
+            Some(c) => {
+                eprintln!(
+                    "{} codes: {:.1} MB, built in {:.1} s",
+                    quant.label(),
+                    c.bytes() as f64 / 1e6,
+                    t0.elapsed().as_secs_f64()
+                );
+                // Resident set for a quantized segment: graph + codes; the f32
+                // vectors are only read for re-ranking (memory-mapped).
+                let graph_mb = idx.graph().memory_bytes() as f64 / 1e6;
+                (
+                    format!("hnsw-{}-rerank{rerank}", quant.label()),
+                    graph_mb + c.bytes() as f64 / 1e6,
+                )
             }
-            writeln!(sink, "{line}").map_err(|e| e.to_string())?;
+        };
+        for &t in &threads {
+            for &ef in &efs {
+                let p = sweep_point(&w, k, t, |q, out| {
+                    let r = match &codes {
+                        None => idx.search(q, k, ef),
+                        Some(c) => idx.search_quantized(c, q, k, ef, rerank),
+                    };
+                    out.extend(r.unwrap().iter().map(|nb| nb.id));
+                });
+                let line = format!(
+                    "quiver,{variant},{dataset},{},{m},{efc},{ef},{k},{t},{build_threads},{:.4},{:.1},{:.1},{:.1},{build_s:.2},{mb:.1},{:.1}",
+                    metric.name(),
+                    p.recall,
+                    p.qps,
+                    p.p50_us,
+                    p.p99_us,
+                    peak_rss_bytes() as f64 / 1e6
+                );
+                if out.is_some() {
+                    eprintln!("{line}");
+                }
+                writeln!(sink, "{line}").map_err(|e| e.to_string())?;
+            }
         }
     }
     Ok(())

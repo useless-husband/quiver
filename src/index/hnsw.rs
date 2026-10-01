@@ -426,6 +426,55 @@ impl HnswIndex {
         Ok(top.into_sorted())
     }
 
+    /// Compresses every row (in id order) for [`search_quantized`](Self::search_quantized).
+    pub fn build_codes(
+        &self,
+        q: crate::quant::Quantization,
+        threads: usize,
+    ) -> Result<Option<crate::quant::Codes>> {
+        let n = self.len();
+        let mut data = Vec::with_capacity(n * self.dim);
+        for id in 0..n as u32 {
+            match self.vector(id) {
+                Some(v) => data.extend_from_slice(v),
+                None => data.extend(std::iter::repeat_n(0.0, self.dim)),
+            }
+        }
+        crate::quant::Codes::build(q, &data, self.dim, self.metric, self.params().seed, threads)
+            .map_err(Error::Invalid)
+    }
+
+    /// Search that walks the graph with compressed distances and re-ranks
+    /// `k * rerank` candidates with the stored f32 vectors.
+    pub fn search_quantized(
+        &self,
+        codes: &crate::quant::Codes,
+        q: &[f32],
+        k: usize,
+        ef: usize,
+        rerank: usize,
+    ) -> Result<Vec<Neighbor>> {
+        let mut buf = Vec::new();
+        let q = self.prepare_query(q, &mut buf)?;
+        if codes.rows() < self.len() {
+            return invalid("codes cover fewer rows than the index; rebuild them");
+        }
+        let mut sc = self.scratch();
+        let accept = |id: u32| !self.deleted.get(id as usize);
+        let r = codes.search(
+            &self.graph,
+            &self.space(),
+            q,
+            k,
+            ef,
+            rerank,
+            &accept,
+            &mut sc,
+        );
+        self.recycle(sc);
+        Ok(r)
+    }
+
     /// Checks the graph invariants over every linked row.
     pub fn check(&self) -> std::result::Result<GraphStats, String> {
         let ids = (0..self.len() as u32)
