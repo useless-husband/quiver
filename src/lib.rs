@@ -7,6 +7,7 @@ pub mod bench;
 pub mod distance;
 pub mod error;
 pub mod index;
+pub mod payload;
 pub mod quant;
 pub mod rng;
 pub mod storage;
