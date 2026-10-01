@@ -9,6 +9,7 @@ pub mod error;
 pub mod index;
 pub mod quant;
 pub mod rng;
+pub mod storage;
 
 #[cfg(test)]
 pub(crate) mod testkit;
