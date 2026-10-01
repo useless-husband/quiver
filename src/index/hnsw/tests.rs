@@ -1,6 +1,6 @@
 use super::*;
 use crate::index::flat::{FlatIndex, ground_truth};
-use crate::index::graph::{FrozenGraph, Topology, check_invariants, reachable_fraction};
+use crate::index::graph::{FrozenGraph, check_invariants, reachable_fraction};
 use crate::index::recall;
 use crate::rng::Rng;
 use crate::testkit::{clustered, property};

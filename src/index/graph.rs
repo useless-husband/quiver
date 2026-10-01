@@ -158,6 +158,7 @@ fn greedy<T: Topology, S: Space>(
 /// result set. While fewer than `ef` accepted nodes are known the search keeps
 /// expanding, which is what makes selective filters expensive (see
 /// `collection.rs` for the brute-force fallback).
+#[allow(clippy::too_many_arguments)]
 pub fn search_layer<T, S, F>(
     t: &T,
     s: &S,
