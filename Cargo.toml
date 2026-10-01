@@ -1,0 +1,44 @@
+[package]
+name = "quiver"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A compact vector database: hand-written HNSW, NEON/AVX2 distance kernels, quantization, WAL-backed storage, filtered search and an HTTP API."
+license = "MIT"
+repository = "https://github.com/useless-husband/quiver"
+readme = "README.md"
+keywords = ["vector-database", "hnsw", "ann", "simd", "neon"]
+categories = ["database-implementations", "algorithms"]
+
+[lib]
+name = "quiver"
+path = "src/lib.rs"
+
+[[bin]]
+name = "quiver"
+path = "src/main.rs"
+
+# Every dependency is listed with the reason it is here.
+[dependencies]
+# JSON for the HTTP API, payloads and the manifest.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# mmap(2), fcntl(F_FULLFSYNC), getrusage(2): thin bindings, no logic.
+libc = "0.2"
+# A small synchronous HTTP/1.1 server; request routing is ours.
+tiny_http = "0.12"
+
+[profile.release]
+debug = 1
+codegen-units = 4
+lto = "thin"
+
+# Tests run optimised (the recall and crash tests build real indexes) but keep
+# debug assertions and overflow checks on.
+[profile.test]
+opt-level = 3
+debug-assertions = true
+overflow-checks = true
+
+[profile.bench]
+debug = 1

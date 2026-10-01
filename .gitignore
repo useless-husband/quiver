@@ -1,0 +1,10 @@
+/target
+*.fbin
+*.ibin
+*.hdf5
+/bench/data/
+/bench/.venv/
+__pycache__/
+*.pyc
+.DS_Store
+/quiver-data/
