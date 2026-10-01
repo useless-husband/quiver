@@ -13,6 +13,14 @@ impl Bitset {
         Bitset { words: vec![0; len.div_ceil(64)], len }
     }
 
+    /// Takes ownership of words, resized to `len` bits.
+    pub fn from_words(mut words: Vec<u64>, len: usize) -> Bitset {
+        words.resize(len.div_ceil(64), 0);
+        let mut b = Bitset { words, len };
+        b.trim();
+        b
+    }
+
     pub fn full(len: usize) -> Bitset {
         let mut b = Bitset { words: vec![u64::MAX; len.div_ceil(64)], len };
         b.trim();

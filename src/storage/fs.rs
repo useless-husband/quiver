@@ -89,6 +89,29 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: SyncMode) -> io::Result<()>
     sync_dir(dir, mode)
 }
 
+/// An exclusive advisory lock (`flock`) on `dir/LOCK`, held until dropped.
+/// It stops a second process (or a second open in this one) from using the
+/// same directory, which would corrupt the WAL and the manifest.
+pub struct DirLock {
+    _file: File,
+}
+
+impl DirLock {
+    pub fn acquire(dir: &Path) -> io::Result<DirLock> {
+        use std::os::fd::AsRawFd;
+        let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("LOCK"))?;
+        // SAFETY: flock on a descriptor we own.
+        let r = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        if r != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WouldBlock,
+                format!("{} is in use by another quiver instance", dir.display()),
+            ));
+        }
+        Ok(DirLock { _file: file })
+    }
+}
+
 /// A read-only memory map of a whole file.
 pub struct Mmap {
     ptr: *mut libc::c_void,

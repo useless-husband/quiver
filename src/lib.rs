@@ -4,6 +4,8 @@
 //! * [`index`]: a brute-force flat index and a concurrent HNSW graph.
 
 pub mod bench;
+pub mod collection;
+pub mod db;
 pub mod distance;
 pub mod error;
 pub mod index;

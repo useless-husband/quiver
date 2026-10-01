@@ -375,6 +375,33 @@ impl HnswIndex {
         Ok(top.into_sorted())
     }
 
+    /// Graph search with an already prepared query (the collection layer
+    /// prepares once for all segments). Tombstones are excluded.
+    pub(crate) fn knn_prepared<F: Fn(u32) -> bool>(&self, q: &[f32], k: usize, ef: usize, accept: &F) -> Vec<Neighbor> {
+        let mut sc = self.scratch();
+        let space = self.space();
+        let r = graph::knn(&self.graph, &space, q, k, ef, &|id| !self.deleted.get(id as usize) && accept(id), &mut sc);
+        self.recycle(sc);
+        r
+    }
+
+    /// Exact search over explicitly listed rows (filtered brute force). Rows
+    /// that are not yet written or are tombstoned are skipped.
+    pub(crate) fn exact_prepared(&self, q: &[f32], k: usize, ids: impl Iterator<Item = u32>) -> Vec<Neighbor> {
+        let space = self.space();
+        let mut top = TopK::new(k);
+        for id in ids {
+            let ok = self.state.get(id as usize).is_some_and(|s| s.load(Ordering::Acquire) != EMPTY);
+            if ok && !self.deleted.get(id as usize) {
+                let d = space.dist(q, id);
+                if d < top.bound() {
+                    top.push(Neighbor::new(id, d));
+                }
+            }
+        }
+        top.into_sorted()
+    }
+
     /// Compresses every row (in id order) for [`search_quantized`](Self::search_quantized).
     pub fn build_codes(&self, q: crate::quant::Quantization, threads: usize) -> Result<Option<crate::quant::Codes>> {
         let n = self.len();
