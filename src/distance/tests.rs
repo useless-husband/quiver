@@ -36,9 +36,7 @@ fn check_close(what: &str, got: f32, want: f64, bound: f64) -> Result<(), String
     if err <= bound || (got.is_nan() && want.is_nan()) {
         Ok(())
     } else {
-        Err(format!(
-            "{what}: got {got}, want {want}, error {err:e} > bound {bound:e}"
-        ))
+        Err(format!("{what}: got {got}, want {want}, error {err:e} > bound {bound:e}"))
     }
 }
 
@@ -64,11 +62,7 @@ fn f32_kernels_match_reference() {
             bbs += y * y;
         }
         let gamma = 2.0 * (n as f64 + 4.0) * U;
-        let cos_ref = if aa == 0.0 || bbs == 0.0 {
-            1.0
-        } else {
-            (1.0 - ab / (aa * bbs).sqrt()).max(0.0)
-        };
+        let cos_ref = if aa == 0.0 || bbs == 0.0 { 1.0 } else { (1.0 - ab / (aa * bbs).sqrt()).max(0.0) };
         for k in &tables {
             let ctx = |m: &str| format!("{} {m} n={n} offsets=({oa},{ob})", k.name);
             check_close(&ctx("l2sq"), (k.l2sq_f32)(sa, sb), l2, gamma * l2 + 1e-30)?;
@@ -77,12 +71,7 @@ fn f32_kernels_match_reference() {
             // rounding of the norms and the square root.
             let both_nonzero = a.iter().any(|&x| x != 0.0) && b.iter().any(|&x| x != 0.0);
             if both_nonzero || n == 0 {
-                check_close(
-                    &ctx("cosine"),
-                    (k.cosine_f32)(sa, sb),
-                    cos_ref,
-                    4.0 * gamma + 1e-6,
-                )?;
+                check_close(&ctx("cosine"), (k.cosine_f32)(sa, sb), cos_ref, 4.0 * gamma + 1e-6)?;
             }
         }
         Ok(())
@@ -91,15 +80,7 @@ fn f32_kernels_match_reference() {
 
 fn random_i8(rng: &mut Rng, n: usize) -> Vec<i8> {
     let extreme = rng.bool(0.2);
-    (0..n)
-        .map(|_| {
-            if extreme {
-                if rng.bool(0.5) { -128 } else { 127 }
-            } else {
-                rng.next_u64() as i8
-            }
-        })
-        .collect()
+    (0..n).map(|_| if extreme { if rng.bool(0.5) { -128 } else { 127 } } else { rng.next_u64() as i8 }).collect()
 }
 
 #[test]
@@ -136,24 +117,9 @@ fn i8_kernels_do_not_overflow_on_long_extreme_inputs() {
         let lo = vec![-128i8; n];
         let hi = vec![127i8; n];
         for k in available() {
-            assert_eq!(
-                (k.dot_i8)(&lo, &lo),
-                16384 * n as i64,
-                "{} dot n={n}",
-                k.name
-            );
-            assert_eq!(
-                (k.dot_i8)(&lo, &hi),
-                -16256 * n as i64,
-                "{} dot n={n}",
-                k.name
-            );
-            assert_eq!(
-                (k.l2sq_i8)(&lo, &hi),
-                65025 * n as u64,
-                "{} l2 n={n}",
-                k.name
-            );
+            assert_eq!((k.dot_i8)(&lo, &lo), 16384 * n as i64, "{} dot n={n}", k.name);
+            assert_eq!((k.dot_i8)(&lo, &hi), -16256 * n as i64, "{} dot n={n}", k.name);
+            assert_eq!((k.l2sq_i8)(&lo, &hi), 65025 * n as u64, "{} l2 n={n}", k.name);
         }
     }
 }

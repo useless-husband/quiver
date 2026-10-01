@@ -40,9 +40,7 @@ impl Ord for Neighbor {
     /// ties are deterministic.
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        self.dist
-            .total_cmp(&other.dist)
-            .then(self.id.cmp(&other.id))
+        self.dist.total_cmp(&other.dist).then(self.id.cmp(&other.id))
     }
 }
 
@@ -82,20 +80,13 @@ pub struct TopK {
 
 impl TopK {
     pub fn new(k: usize) -> TopK {
-        TopK {
-            k,
-            heap: std::collections::BinaryHeap::with_capacity(k + 1),
-        }
+        TopK { k, heap: std::collections::BinaryHeap::with_capacity(k + 1) }
     }
 
     /// The distance a candidate must beat to enter, or +inf while not full.
     #[inline]
     pub fn bound(&self) -> f32 {
-        if self.heap.len() < self.k {
-            f32::INFINITY
-        } else {
-            self.heap.peek().map_or(f32::INFINITY, |n| n.dist)
-        }
+        if self.heap.len() < self.k { f32::INFINITY } else { self.heap.peek().map_or(f32::INFINITY, |n| n.dist) }
     }
 
     #[inline]

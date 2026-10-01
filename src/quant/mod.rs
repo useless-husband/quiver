@@ -55,10 +55,7 @@ mod tests {
     #[test]
     fn parse_labels() {
         assert_eq!(Quantization::parse("int8"), Some(Quantization::Int8));
-        assert_eq!(
-            Quantization::parse("pq32"),
-            Some(Quantization::Pq { m: 32 })
-        );
+        assert_eq!(Quantization::parse("pq32"), Some(Quantization::Pq { m: 32 }));
         assert_eq!(Quantization::parse("pq:8"), Some(Quantization::Pq { m: 8 }));
         assert_eq!(Quantization::parse("pqx"), None);
         assert_eq!(Quantization::Pq { m: 16 }.label(), "pq16");
@@ -90,9 +87,7 @@ impl Codes {
         Ok(match q {
             Quantization::None => None,
             Quantization::Int8 => Some(Codes::Int8(sq8::Sq8::build(data, dim, metric))),
-            Quantization::Pq { m } => Some(Codes::Pq(pq::Pq::build(
-                data, dim, m, metric, seed, threads,
-            )?)),
+            Quantization::Pq { m } => Some(Codes::Pq(pq::Pq::build(data, dim, m, metric, seed, threads)?)),
         })
     }
 
@@ -140,32 +135,13 @@ impl Codes {
     {
         let keep = (k * rerank).max(k);
         let cands = match self {
-            Codes::Int8(s) => knn(
-                topo,
-                &s.space(),
-                &s.query(q),
-                keep,
-                ef.max(keep),
-                accept,
-                sc,
-            ),
-            Codes::Pq(p) => knn(
-                topo,
-                &p.space(),
-                &p.query(q),
-                keep,
-                ef.max(keep),
-                accept,
-                sc,
-            ),
+            Codes::Int8(s) => knn(topo, &s.space(), &s.query(q), keep, ef.max(keep), accept, sc),
+            Codes::Pq(p) => knn(topo, &p.space(), &p.query(q), keep, ef.max(keep), accept, sc),
         };
         if rerank == 0 {
             return cands;
         }
-        let mut r: Vec<Neighbor> = cands
-            .iter()
-            .map(|c| Neighbor::new(c.id, exact.dist(q, c.id)))
-            .collect();
+        let mut r: Vec<Neighbor> = cands.iter().map(|c| Neighbor::new(c.id, exact.dist(q, c.id))).collect();
         r.sort_unstable();
         r.truncate(k);
         r

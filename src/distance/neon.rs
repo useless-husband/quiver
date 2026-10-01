@@ -220,10 +220,7 @@ pub unsafe fn l2sq_i8_dotprod(a: &[i8], b: &[i8]) -> u64 {
             let mut acc1 = vdupq_n_u32(0);
             while i + 32 <= end {
                 let d0 = vreinterpretq_u8_s8(vabdq_s8(vld1q_s8(pa.add(i)), vld1q_s8(pb.add(i))));
-                let d1 = vreinterpretq_u8_s8(vabdq_s8(
-                    vld1q_s8(pa.add(i + 16)),
-                    vld1q_s8(pb.add(i + 16)),
-                ));
+                let d1 = vreinterpretq_u8_s8(vabdq_s8(vld1q_s8(pa.add(i + 16)), vld1q_s8(pb.add(i + 16))));
                 acc0 = vdotq_u32(acc0, d0, d0);
                 acc1 = vdotq_u32(acc1, d1, d1);
                 i += 32;

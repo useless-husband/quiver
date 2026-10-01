@@ -57,11 +57,7 @@ pub struct GraphParams {
 
 impl Default for GraphParams {
     fn default() -> Self {
-        GraphParams {
-            m: 16,
-            ef_construction: 200,
-            seed: 0x5157_4952,
-        }
+        GraphParams { m: 16, ef_construction: 200, seed: 0x5157_4952 }
     }
 }
 
@@ -75,10 +71,7 @@ impl GraphParams {
             return Err(format!("m must be between 2 and 128, got {}", self.m));
         }
         if self.ef_construction == 0 || self.ef_construction > 10_000 {
-            return Err(format!(
-                "ef_construction must be between 1 and 10000, got {}",
-                self.ef_construction
-            ));
+            return Err(format!("ef_construction must be between 1 and 10000, got {}", self.ef_construction));
         }
         Ok(())
     }
@@ -189,11 +182,7 @@ where
     while sc.res.len() > ef {
         sc.res.pop();
     }
-    let mut bound = if sc.res.len() >= ef {
-        sc.res.peek().map_or(f32::INFINITY, |n| n.dist)
-    } else {
-        f32::INFINITY
-    };
+    let mut bound = if sc.res.len() >= ef { sc.res.peek().map_or(f32::INFINITY, |n| n.dist) } else { f32::INFINITY };
     while let Some(Reverse(c)) = sc.cand.pop() {
         if c.dist > bound {
             break;
@@ -234,15 +223,7 @@ where
 
 /// k-NN search: greedy descent through the upper layers, then a beam of width
 /// `max(ef, k)` on layer 0.
-pub fn knn<T, S, F>(
-    t: &T,
-    s: &S,
-    q: &S::Query,
-    k: usize,
-    ef: usize,
-    accept: &F,
-    sc: &mut Scratch,
-) -> Vec<Neighbor>
+pub fn knn<T, S, F>(t: &T, s: &S, q: &S::Query, k: usize, ef: usize, accept: &F, sc: &mut Scratch) -> Vec<Neighbor>
 where
     T: Topology,
     S: Space,
@@ -269,12 +250,7 @@ where
 /// keep one only if it is closer to the base than to every neighbour already
 /// kept. This favours neighbours in different directions, which keeps
 /// clustered data navigable where "keep the M closest" would not.
-pub fn select_heuristic<S: BuildSpace>(
-    s: &S,
-    cands: &[Neighbor],
-    m: usize,
-    out: &mut Vec<Neighbor>,
-) {
+pub fn select_heuristic<S: BuildSpace>(s: &S, cands: &[Neighbor], m: usize, out: &mut Vec<Neighbor>) {
     out.clear();
     if cands.len() <= m {
         out.extend_from_slice(cands);
@@ -330,9 +306,7 @@ impl Graph {
             ml: 1.0 / (m as f64).ln(),
             cap: capacity,
             levels: (0..capacity).map(|_| AtomicU8::new(NOT_INSERTED)).collect(),
-            links0: (0..capacity * (1 + m0))
-                .map(|_| AtomicU32::new(0))
-                .collect(),
+            links0: (0..capacity * (1 + m0)).map(|_| AtomicU32::new(0)).collect(),
             upper: (0..capacity).map(|_| OnceLock::new()).collect(),
             locks: (0..capacity).map(|_| SpinLock::new()).collect(),
             entry: AtomicU64::new(EMPTY),
@@ -357,12 +331,7 @@ impl Graph {
 
     /// Bytes used by the graph structure (excluding vectors).
     pub fn memory_bytes(&self) -> usize {
-        let upper: usize = self
-            .upper
-            .iter()
-            .filter_map(|u| u.get())
-            .map(|u| u.len() * 4)
-            .sum();
+        let upper: usize = self.upper.iter().filter_map(|u| u.get()).map(|u| u.len() * 4).sum();
         self.cap * (1 + 1 + 24 + 4 * (1 + self.m0)) + upper
     }
 
@@ -401,24 +370,13 @@ impl Graph {
     /// Inserts row `id`, whose vector the caller has already written and which
     /// `q` describes. Each id may be inserted once.
     pub fn insert<S: BuildSpace>(&self, s: &S, id: u32, q: &S::Query, sc: &mut Scratch) {
-        assert!(
-            (id as usize) < self.cap,
-            "id {id} beyond capacity {}",
-            self.cap
-        );
+        assert!((id as usize) < self.cap, "id {id} beyond capacity {}", self.cap);
         let level = self.random_level();
         self.levels[id as usize]
-            .compare_exchange(
-                NOT_INSERTED,
-                level as u8,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            )
+            .compare_exchange(NOT_INSERTED, level as u8, Ordering::AcqRel, Ordering::Acquire)
             .unwrap_or_else(|_| panic!("row {id} inserted twice"));
         if level > 0 {
-            let lists = (0..level * (1 + self.m))
-                .map(|_| AtomicU32::new(0))
-                .collect();
+            let lists = (0..level * (1 + self.m)).map(|_| AtomicU32::new(0)).collect();
             if self.upper[id as usize].set(lists).is_err() {
                 panic!("row {id} already has upper layers");
             }
@@ -450,16 +408,7 @@ impl Graph {
         // from selecting itself as a neighbour (a self loop).
         let not_self = |x: u32| x != id;
         for lc in (0..=level.min(top)).rev() {
-            let w = search_layer(
-                self,
-                s,
-                q,
-                &eps,
-                self.params.ef_construction,
-                lc,
-                &not_self,
-                sc,
-            );
+            let w = search_layer(self, s, q, &eps, self.params.ef_construction, lc, &not_self, sc);
             let mut sel = std::mem::take(&mut sc.sel);
             select_heuristic(s, &w, self.m, &mut sel);
             self.set_own_links(s, id, lc, &sel, sc);
@@ -478,14 +427,7 @@ impl Graph {
     /// Sets the new node's own list. Another insert may already have linked
     /// back to it (it can be found through a higher layer before this layer is
     /// wired), so existing entries are merged rather than overwritten.
-    fn set_own_links<S: BuildSpace>(
-        &self,
-        s: &S,
-        id: u32,
-        level: usize,
-        sel: &[Neighbor],
-        sc: &mut Scratch,
-    ) {
+    fn set_own_links<S: BuildSpace>(&self, s: &S, id: u32, level: usize, sel: &[Neighbor], sc: &mut Scratch) {
         let Some(l) = self.list(id, level) else {
             return;
         };
@@ -512,15 +454,7 @@ impl Graph {
 
     /// Adds `q` to the neighbours of `e` on `level`, shrinking the list with
     /// the heuristic when it is full.
-    fn connect<S: BuildSpace>(
-        &self,
-        s: &S,
-        e: u32,
-        q: u32,
-        d_eq: f32,
-        level: usize,
-        sc: &mut Scratch,
-    ) {
+    fn connect<S: BuildSpace>(&self, s: &S, e: u32, q: u32, d_eq: f32, level: usize, sc: &mut Scratch) {
         let Some(l) = self.list(e, level) else { return };
         let max = self.max_degree(level);
         let _g = self.locks[e as usize].lock();
@@ -577,19 +511,8 @@ impl Graph {
             }
         }
         let entry = self.entry.load(Ordering::Acquire);
-        let entry = if entry == EMPTY {
-            None
-        } else {
-            Some(unpack(entry))
-        };
-        FrozenParts {
-            m: self.m,
-            entry,
-            levels,
-            links0,
-            upper_off,
-            upper,
-        }
+        let entry = if entry == EMPTY { None } else { Some(unpack(entry)) };
+        FrozenParts { m: self.m, entry, levels, links0, upper_off, upper }
     }
 
     /// Rebuilds a mutable graph from frozen parts (used when a sealed segment
@@ -602,8 +525,7 @@ impl Graph {
             let lv = parts.level(id).unwrap();
             g.levels[id as usize].store(lv as u8, Ordering::Relaxed);
             if lv > 0 {
-                let _ = g.upper[id as usize]
-                    .set((0..lv * (1 + g.m)).map(|_| AtomicU32::new(0)).collect());
+                let _ = g.upper[id as usize].set((0..lv * (1 + g.m)).map(|_| AtomicU32::new(0)).collect());
             }
             for level in 0..=lv {
                 parts.neighbors(id, level, &mut buf);
@@ -640,11 +562,7 @@ impl Topology for Graph {
 
     fn level(&self, id: u32) -> Option<usize> {
         let l = self.levels.get(id as usize)?.load(Ordering::Acquire);
-        if l == NOT_INSERTED {
-            None
-        } else {
-            Some(l as usize)
-        }
+        if l == NOT_INSERTED { None } else { Some(l as usize) }
     }
 
     fn capacity(&self) -> usize {
@@ -718,9 +636,7 @@ impl FrozenGraph<'_> {
                 return Err(format!("row {id} has {c} links on layer {level}"));
             }
             if let Some(&x) = l[1..1 + c].iter().find(|&&x| x as usize >= n) {
-                return Err(format!(
-                    "row {id} layer {level} links to row {x} beyond {n}"
-                ));
+                return Err(format!("row {id} layer {level} links to row {x} beyond {n}"));
             }
             Ok(())
         };
@@ -733,9 +649,7 @@ impl FrozenGraph<'_> {
             check_list(id, 0, &self.links0[s..s + 1 + self.m0], self.m0)?;
             if lv > 0 {
                 let off = self.upper_off[id] as usize;
-                let end = off
-                    .checked_add(lv * (1 + self.m))
-                    .ok_or("upper offset overflow")?;
+                let end = off.checked_add(lv * (1 + self.m)).ok_or("upper offset overflow")?;
                 if end > self.upper.len() {
                     return Err(format!("row {id} upper links out of range"));
                 }
@@ -790,10 +704,7 @@ impl Topology for FrozenGraph<'_> {
 /// `quiver check`: no self loops, no duplicate or dangling links, degrees
 /// within bounds, every link points to a node that exists on that layer, and
 /// the entry point sits on the top layer.
-pub fn check_invariants<T: Topology>(
-    t: &T,
-    ids: impl Iterator<Item = u32>,
-) -> Result<GraphStats, String> {
+pub fn check_invariants<T: Topology>(t: &T, ids: impl Iterator<Item = u32>) -> Result<GraphStats, String> {
     let mut stats = GraphStats::default();
     let mut buf = Vec::new();
     let mut max_level = 0;
@@ -806,11 +717,7 @@ pub fn check_invariants<T: Topology>(
         for level in 0..=lv {
             t.neighbors(id, level, &mut buf);
             if buf.len() > t.max_degree(level) {
-                return Err(format!(
-                    "row {id} layer {level}: degree {} > {}",
-                    buf.len(),
-                    t.max_degree(level)
-                ));
+                return Err(format!("row {id} layer {level}: degree {} > {}", buf.len(), t.max_degree(level)));
             }
             let mut sorted = buf.clone();
             sorted.sort_unstable();
@@ -825,9 +732,7 @@ pub fn check_invariants<T: Topology>(
                 match t.level(x) {
                     None => return Err(format!("row {id} layer {level}: dangling link to {x}")),
                     Some(xl) if xl < level => {
-                        return Err(format!(
-                            "row {id} layer {level}: link to {x} which only reaches layer {xl}"
-                        ));
+                        return Err(format!("row {id} layer {level}: link to {x} which only reaches layer {xl}"));
                     }
                     _ => {}
                 }
@@ -841,10 +746,7 @@ pub fn check_invariants<T: Topology>(
         None if stats.nodes > 0 => return Err("graph has nodes but no entry point".into()),
         Some((e, l)) => {
             if t.level(e) != Some(l) {
-                return Err(format!(
-                    "entry {e} claims level {l} but has {:?}",
-                    t.level(e)
-                ));
+                return Err(format!("entry {e} claims level {l} but has {:?}", t.level(e)));
             }
             if l != max_level {
                 return Err(format!("entry level {l} is not the top level {max_level}"));

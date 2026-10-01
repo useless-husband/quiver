@@ -7,12 +7,7 @@ use crate::distance::Metric;
 use crate::index::hnsw::F32Space;
 
 /// The `k` closest rows among `ids`, exactly.
-pub fn exact_knn<S: Space>(
-    s: &S,
-    q: &S::Query,
-    ids: impl Iterator<Item = u32>,
-    k: usize,
-) -> Vec<Neighbor> {
+pub fn exact_knn<S: Space>(s: &S, q: &S::Query, ids: impl Iterator<Item = u32>, k: usize) -> Vec<Neighbor> {
     let mut top = TopK::new(k);
     for id in ids {
         let d = s.dist(q, id);
@@ -33,11 +28,7 @@ pub struct FlatIndex {
 impl FlatIndex {
     pub fn new(dim: usize, metric: Metric) -> FlatIndex {
         assert!(dim > 0);
-        FlatIndex {
-            dim,
-            metric,
-            data: Vec::new(),
-        }
+        FlatIndex { dim, metric, data: Vec::new() }
     }
 
     /// Builds from `rows * dim` raw vectors.
@@ -77,12 +68,7 @@ impl FlatIndex {
             return Vec::new();
         }
         let q = self.metric.prepare(q);
-        exact_knn(
-            &self.space(),
-            &q[..],
-            (0..self.len() as u32).filter(|&i| accept(i)),
-            k,
-        )
+        exact_knn(&self.space(), &q[..], (0..self.len() as u32).filter(|&i| accept(i)), k)
     }
 }
 
@@ -129,9 +115,8 @@ mod tests {
             let f = FlatIndex::from_vectors(dim, metric, &data);
             let q: Vec<f32> = (0..dim).map(|_| rng.normal()).collect();
             let got = f.search(&q, 10);
-            let mut all: Vec<Neighbor> = (0..500)
-                .map(|i| Neighbor::new(i, metric.distance(&q, &data[i as usize * dim..][..dim])))
-                .collect();
+            let mut all: Vec<Neighbor> =
+                (0..500).map(|i| Neighbor::new(i, metric.distance(&q, &data[i as usize * dim..][..dim]))).collect();
             all.sort();
             let want: Vec<u32> = all[..10].iter().map(|n| n.id).collect();
             let got_ids: Vec<u32> = got.iter().map(|n| n.id).collect();
@@ -140,10 +125,6 @@ mod tests {
             let odd = f.search_with(&q, 5, |i| i % 2 == 1);
             assert!(odd.iter().all(|n| n.id % 2 == 1) && odd.len() == 5);
         }
-        assert!(
-            FlatIndex::new(3, Metric::L2)
-                .search(&[0.0; 3], 4)
-                .is_empty()
-        );
+        assert!(FlatIndex::new(3, Metric::L2).search(&[0.0; 3], 4).is_empty());
     }
 }

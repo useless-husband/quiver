@@ -12,10 +12,7 @@ pub struct VisitedSet {
 
 impl VisitedSet {
     pub fn new(capacity: usize) -> VisitedSet {
-        VisitedSet {
-            marks: vec![0; capacity],
-            epoch: 0,
-        }
+        VisitedSet { marks: vec![0; capacity], epoch: 0 }
     }
 
     /// Starts a new search over ids `0..capacity`.

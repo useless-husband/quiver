@@ -10,17 +10,11 @@ pub struct Bitset {
 
 impl Bitset {
     pub fn new(len: usize) -> Bitset {
-        Bitset {
-            words: vec![0; len.div_ceil(64)],
-            len,
-        }
+        Bitset { words: vec![0; len.div_ceil(64)], len }
     }
 
     pub fn full(len: usize) -> Bitset {
-        let mut b = Bitset {
-            words: vec![u64::MAX; len.div_ceil(64)],
-            len,
-        };
+        let mut b = Bitset { words: vec![u64::MAX; len.div_ceil(64)], len };
         b.trim();
         b
     }
@@ -115,19 +109,13 @@ pub struct AtomicBitset {
 
 impl AtomicBitset {
     pub fn new(len: usize) -> AtomicBitset {
-        AtomicBitset {
-            words: (0..len.div_ceil(64)).map(|_| AtomicU64::new(0)).collect(),
-            len,
-        }
+        AtomicBitset { words: (0..len.div_ceil(64)).map(|_| AtomicU64::new(0)).collect(), len }
     }
 
     pub fn from_words(words: &[u64], len: usize) -> AtomicBitset {
         let mut w: Vec<AtomicU64> = words.iter().map(|&x| AtomicU64::new(x)).collect();
         w.resize_with(len.div_ceil(64), || AtomicU64::new(0));
-        AtomicBitset {
-            words: w.into_boxed_slice(),
-            len,
-        }
+        AtomicBitset { words: w.into_boxed_slice(), len }
     }
 
     pub fn len(&self) -> usize {
@@ -157,17 +145,11 @@ impl AtomicBitset {
     }
 
     pub fn count(&self) -> usize {
-        self.words
-            .iter()
-            .map(|w| w.load(Ordering::Acquire).count_ones() as usize)
-            .sum()
+        self.words.iter().map(|w| w.load(Ordering::Acquire).count_ones() as usize).sum()
     }
 
     pub fn snapshot(&self) -> Vec<u64> {
-        self.words
-            .iter()
-            .map(|w| w.load(Ordering::Acquire))
-            .collect()
+        self.words.iter().map(|w| w.load(Ordering::Acquire)).collect()
     }
 }
 

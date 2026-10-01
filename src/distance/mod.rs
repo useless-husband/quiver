@@ -201,13 +201,9 @@ pub fn kernels() -> &'static Kernels {
             if let Some(k) = by_name(&name) {
                 return k;
             }
-            eprintln!(
-                "quiver: QUIVER_KERNELS={name} is not available here; using the best kernels"
-            );
+            eprintln!("quiver: QUIVER_KERNELS={name} is not available here; using the best kernels");
         }
-        *available()
-            .last()
-            .expect("scalar kernels are always available")
+        *available().last().expect("scalar kernels are always available")
     })
 }
 

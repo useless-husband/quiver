@@ -15,20 +15,13 @@ pub fn base_seed() -> u64 {
         .ok()
         .and_then(|s| {
             let s = s.trim();
-            if let Some(h) = s.strip_prefix("0x") {
-                u64::from_str_radix(h, 16).ok()
-            } else {
-                s.parse().ok()
-            }
+            if let Some(h) = s.strip_prefix("0x") { u64::from_str_radix(h, 16).ok() } else { s.parse().ok() }
         })
         .unwrap_or(DEFAULT_SEED)
 }
 
 pub fn scaled_cases(default: usize) -> usize {
-    std::env::var("QUIVER_TEST_CASES")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default)
+    std::env::var("QUIVER_TEST_CASES").ok().and_then(|s| s.parse().ok()).unwrap_or(default)
 }
 
 /// Runs `f` on `cases` seeded generators; panics with the failing seed.

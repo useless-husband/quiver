@@ -26,22 +26,14 @@ impl Workload {
         let (nq, qd, mut queries) = read_fbin(&PathBuf::from(a.req("queries")?)).map_err(e)?;
         let (tn, truth_k, mut truth) = read_ibin(&PathBuf::from(a.req("truth")?)).map_err(e)?;
         if qd != dim || tn != nq {
-            return Err(format!(
-                "shape mismatch: base {n}x{dim}, queries {nq}x{qd}, truth {tn}x{truth_k}"
-            ));
+            return Err(format!("shape mismatch: base {n}x{dim}, queries {nq}x{qd}, truth {tn}x{truth_k}"));
         }
         if let Some(limit) = a.opt::<usize>("nq")? {
             let limit = limit.min(nq);
             queries.truncate(limit * dim);
             truth.truncate(limit * truth_k);
         }
-        Ok(Workload {
-            dim,
-            base,
-            queries,
-            truth,
-            truth_k,
-        })
+        Ok(Workload { dim, base, queries, truth, truth_k })
     }
 
     pub fn nq(&self) -> usize {
@@ -90,16 +82,10 @@ where
     });
     let mut total = 0.0;
     for i in 0..nq {
-        let got: Vec<u32> = ids[i * k..(i + 1) * k]
-            .iter()
-            .map(|x| x.load(Ordering::Relaxed))
-            .collect();
+        let got: Vec<u32> = ids[i * k..(i + 1) * k].iter().map(|x| x.load(Ordering::Relaxed)).collect();
         total += recall(&got, w.truth(i), k);
     }
-    let mut l: Vec<f64> = lat
-        .iter()
-        .map(|x| x.load(Ordering::Relaxed) as f64 / 1000.0)
-        .collect();
+    let mut l: Vec<f64> = lat.iter().map(|x| x.load(Ordering::Relaxed) as f64 / 1000.0).collect();
     l.sort_by(f64::total_cmp);
     Point {
         recall: total / nq as f64,
@@ -117,10 +103,7 @@ pub fn ann(a: &Args) -> Result<(), String> {
     let m = a.get("m", 16usize)?;
     let efc = a.get("efc", 200usize)?;
     let k = a.get("k", 10usize)?;
-    let efs = a.list(
-        "ef",
-        &[10usize, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512],
-    )?;
+    let efs = a.list("ef", &[10usize, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512])?;
     let threads = a.list("threads", &[1usize])?;
     let build_threads = a.get("build-threads", 4usize)?;
     let quants = a.list("quant", &["f32".to_string()])?;
@@ -129,18 +112,11 @@ pub fn ann(a: &Args) -> Result<(), String> {
     let seed = a.get("seed", 1u64)?;
     a.finish()?;
     if k > w.truth_k {
-        return Err(format!(
-            "k={k} exceeds the ground truth depth {}",
-            w.truth_k
-        ));
+        return Err(format!("k={k} exceeds the ground truth depth {}", w.truth_k));
     }
 
     let n = w.base.len() / w.dim;
-    let params = GraphParams {
-        m,
-        ef_construction: efc,
-        seed,
-    };
+    let params = GraphParams { m, ef_construction: efc, seed };
     eprintln!(
         "building HNSW over {n} x {} ({}) with M={m} efConstruction={efc} on {build_threads} threads",
         w.dim,
@@ -148,23 +124,15 @@ pub fn ann(a: &Args) -> Result<(), String> {
     );
     let t0 = Instant::now();
     let idx = HnswIndex::new(w.dim, metric, params, n);
-    idx.insert_batch(&w.base, build_threads)
-        .map_err(|e| e.to_string())?;
+    idx.insert_batch(&w.base, build_threads).map_err(|e| e.to_string())?;
     let build_s = t0.elapsed().as_secs_f64();
     let index_mb = idx.memory_bytes() as f64 / 1e6;
-    eprintln!(
-        "built in {build_s:.1} s, index {index_mb:.0} MB, kernels {}",
-        quiver::distance::kernels().name
-    );
+    eprintln!("built in {build_s:.1} s, index {index_mb:.0} MB, kernels {}", quiver::distance::kernels().name);
 
     let mut sink: Box<dyn Write> = match &out {
         Some(p) => {
             let exists = std::path::Path::new(p).exists();
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(p)
-                .map_err(|e| e.to_string())?;
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(p).map_err(|e| e.to_string())?;
             if !exists {
                 writeln!(f, "{ANN_HEADER}").map_err(|e| e.to_string())?;
             }
@@ -176,12 +144,9 @@ pub fn ann(a: &Args) -> Result<(), String> {
         }
     };
     for qname in &quants {
-        let quant =
-            quiver::quant::Quantization::parse(qname).ok_or(format!("unknown --quant {qname}"))?;
+        let quant = quiver::quant::Quantization::parse(qname).ok_or(format!("unknown --quant {qname}"))?;
         let t0 = Instant::now();
-        let codes = idx
-            .build_codes(quant, build_threads)
-            .map_err(|e| e.to_string())?;
+        let codes = idx.build_codes(quant, build_threads).map_err(|e| e.to_string())?;
         let (variant, mb) = match &codes {
             None => ("hnsw-f32".to_string(), index_mb),
             Some(c) => {
@@ -194,10 +159,7 @@ pub fn ann(a: &Args) -> Result<(), String> {
                 // Resident set for a quantized segment: graph + codes; the f32
                 // vectors are only read for re-ranking (memory-mapped).
                 let graph_mb = idx.graph().memory_bytes() as f64 / 1e6;
-                (
-                    format!("hnsw-{}-rerank{rerank}", quant.label()),
-                    graph_mb + c.bytes() as f64 / 1e6,
-                )
+                (format!("hnsw-{}-rerank{rerank}", quant.label()), graph_mb + c.bytes() as f64 / 1e6)
             }
         };
         for &t in &threads {

@@ -12,10 +12,7 @@ use std::time::Instant;
 
 fn header(buf: &[u8], path: &Path, elem: usize) -> Result<(usize, usize)> {
     if buf.len() < 8 {
-        return Err(Error::Corrupt(format!(
-            "{}: shorter than its header",
-            path.display()
-        )));
+        return Err(Error::Corrupt(format!("{}: shorter than its header", path.display())));
     }
     let n = u32::from_le_bytes(buf[0..4].try_into().unwrap()) as usize;
     let d = u32::from_le_bytes(buf[4..8].try_into().unwrap()) as usize;
@@ -34,10 +31,7 @@ pub fn read_fbin(path: &Path) -> Result<(usize, usize, Vec<f32>)> {
     let mut buf = Vec::new();
     std::fs::File::open(path)?.read_to_end(&mut buf)?;
     let (n, d) = header(&buf, path, 4)?;
-    let data = buf[8..]
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
-        .collect();
+    let data = buf[8..].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
     Ok((n, d, data))
 }
 
@@ -46,10 +40,7 @@ pub fn read_ibin(path: &Path) -> Result<(usize, usize, Vec<u32>)> {
     let mut buf = Vec::new();
     std::fs::File::open(path)?.read_to_end(&mut buf)?;
     let (n, k) = header(&buf, path, 4)?;
-    let data = buf[8..]
-        .chunks_exact(4)
-        .map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32)
-        .collect();
+    let data = buf[8..].chunks_exact(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();
     Ok((n, k, data))
 }
 
@@ -82,11 +73,7 @@ pub fn peak_rss_bytes() -> u64 {
     unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut ru) };
     let v = ru.ru_maxrss as u64;
     // macOS reports bytes, Linux kilobytes.
-    if cfg!(target_os = "macos") {
-        v
-    } else {
-        v * 1024
-    }
+    if cfg!(target_os = "macos") { v } else { v * 1024 }
 }
 
 /// Runs `f(i)` for `i in 0..n` on `threads` threads (dynamic chunks of 16)

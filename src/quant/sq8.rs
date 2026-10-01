@@ -69,14 +69,8 @@ impl Sq8 {
             }
             center = sum.iter().map(|&s| (s / rows as f64) as f32).collect();
         }
-        let mut sq = Sq8 {
-            dim,
-            metric,
-            center,
-            codes: vec![0; rows * dim],
-            scale: vec![0.0; rows],
-            qnorm: vec![0.0; rows],
-        };
+        let mut sq =
+            Sq8 { dim, metric, center, codes: vec![0; rows * dim], scale: vec![0.0; rows], qnorm: vec![0.0; rows] };
         for (i, v) in data.chunks_exact(dim).enumerate() {
             let (s, n) = quantize(v, &sq.center, &mut sq.codes[i * dim..(i + 1) * dim]);
             sq.scale[i] = s;
@@ -86,13 +80,7 @@ impl Sq8 {
     }
 
     /// Reassembles from stored parts (a segment file).
-    pub fn from_parts(
-        dim: usize,
-        metric: Metric,
-        center: Vec<f32>,
-        codes: Vec<i8>,
-        scale: Vec<f32>,
-    ) -> Option<Sq8> {
+    pub fn from_parts(dim: usize, metric: Metric, center: Vec<f32>, codes: Vec<i8>, scale: Vec<f32>) -> Option<Sq8> {
         let rows = scale.len();
         if codes.len() != rows * dim || !(center.is_empty() || center.len() == dim) {
             return None;
@@ -104,14 +92,7 @@ impl Sq8 {
                 scale[i] * scale[i] * n as f32
             })
             .collect();
-        Some(Sq8 {
-            dim,
-            metric,
-            center,
-            codes,
-            scale,
-            qnorm,
-        })
+        Some(Sq8 { dim, metric, center, codes, scale, qnorm })
     }
 
     pub fn rows(&self) -> usize {
@@ -145,18 +126,12 @@ impl Sq8 {
     pub fn decode(&self, id: u32) -> Vec<f32> {
         let i = id as usize;
         (0..self.dim)
-            .map(|d| {
-                self.codes[i * self.dim + d] as f32 * self.scale[i]
-                    + self.center.get(d).copied().unwrap_or(0.0)
-            })
+            .map(|d| self.codes[i * self.dim + d] as f32 * self.scale[i] + self.center.get(d).copied().unwrap_or(0.0))
             .collect()
     }
 
     pub fn space(&self) -> Sq8Space<'_> {
-        Sq8Space {
-            sq: self,
-            k: kernels(),
-        }
+        Sq8Space { sq: self, k: kernels() }
     }
 }
 
@@ -223,11 +198,7 @@ mod tests {
             let v = &data[..dim];
             let dec = sq.decode(0);
             let step = sq.scales()[0];
-            assert!(
-                v.iter()
-                    .zip(&dec)
-                    .all(|(a, b)| (a - b).abs() <= 0.5 * step + 1e-5)
-            );
+            assert!(v.iter().zip(&dec).all(|(a, b)| (a - b).abs() <= 0.5 * step + 1e-5));
         }
     }
 
@@ -237,14 +208,8 @@ mod tests {
         let sq = Sq8::build(&data, 8, Metric::Ip);
         let q = sq.query(&[0.0; 8]);
         assert_eq!(sq.space().dist(&q, 1), 0.0);
-        let parts = Sq8::from_parts(
-            8,
-            Metric::Ip,
-            sq.center().to_vec(),
-            sq.codes().to_vec(),
-            sq.scales().to_vec(),
-        )
-        .unwrap();
+        let parts =
+            Sq8::from_parts(8, Metric::Ip, sq.center().to_vec(), sq.codes().to_vec(), sq.scales().to_vec()).unwrap();
         assert_eq!(parts.rows(), 3);
         assert!(Sq8::from_parts(8, Metric::Ip, vec![], vec![0; 5], vec![1.0]).is_none());
     }

@@ -33,11 +33,7 @@ impl Args {
             }
             i += 1;
         }
-        Args {
-            positional,
-            opts,
-            used: Default::default(),
-        }
+        Args { positional, opts, used: Default::default() }
     }
 
     pub fn str(&self, key: &str) -> Option<String> {
@@ -46,26 +42,20 @@ impl Args {
     }
 
     pub fn req(&self, key: &str) -> Result<String, String> {
-        self.str(key)
-            .ok_or_else(|| format!("missing required option --{key}"))
+        self.str(key).ok_or_else(|| format!("missing required option --{key}"))
     }
 
     pub fn get<T: FromStr>(&self, key: &str, default: T) -> Result<T, String> {
         match self.str(key) {
             None => Ok(default),
-            Some(v) => v
-                .parse()
-                .map_err(|_| format!("invalid value for --{key}: {v}")),
+            Some(v) => v.parse().map_err(|_| format!("invalid value for --{key}: {v}")),
         }
     }
 
     pub fn opt<T: FromStr>(&self, key: &str) -> Result<Option<T>, String> {
         match self.str(key) {
             None => Ok(None),
-            Some(v) => v
-                .parse()
-                .map(Some)
-                .map_err(|_| format!("invalid value for --{key}: {v}")),
+            Some(v) => v.parse().map(Some).map_err(|_| format!("invalid value for --{key}: {v}")),
         }
     }
 
@@ -80,11 +70,7 @@ impl Args {
             Some(v) => v
                 .split(',')
                 .filter(|s| !s.is_empty())
-                .map(|s| {
-                    s.trim()
-                        .parse()
-                        .map_err(|_| format!("invalid value in --{key}: {s}"))
-                })
+                .map(|s| s.trim().parse().map_err(|_| format!("invalid value in --{key}: {s}")))
                 .collect(),
         }
     }
@@ -107,19 +93,8 @@ mod tests {
 
     #[test]
     fn parses_options_flags_and_lists() {
-        let raw: Vec<String> = [
-            "ann",
-            "--m",
-            "16",
-            "--ef=10,20",
-            "--verbose",
-            "--k",
-            "5",
-            "x",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+        let raw: Vec<String> =
+            ["ann", "--m", "16", "--ef=10,20", "--verbose", "--k", "5", "x"].iter().map(|s| s.to_string()).collect();
         let a = Args::parse(&raw);
         assert_eq!(a.positional, vec!["ann", "x"]);
         assert_eq!(a.get("m", 0usize).unwrap(), 16);

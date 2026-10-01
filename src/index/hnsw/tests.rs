@@ -7,11 +7,7 @@ use crate::testkit::{clustered, property};
 use std::sync::Arc;
 
 fn params(m: usize, efc: usize) -> GraphParams {
-    GraphParams {
-        m,
-        ef_construction: efc,
-        seed: 42,
-    }
+    GraphParams { m, ef_construction: efc, seed: 42 }
 }
 
 fn mean_recall(idx: &HnswIndex, queries: &[f32], truth: &[Vec<u32>], k: usize, ef: usize) -> f64 {
@@ -44,10 +40,7 @@ fn recall_on_clustered_data_for_every_metric() {
         // worse on it, hence the lower bar.
         let bar = if metric == Metric::Ip { 0.85 } else { 0.95 };
         assert!(r64 >= bar, "{metric:?} recall@10 at ef=64 is {r64}");
-        assert!(
-            r256 >= bar + 0.03,
-            "{metric:?} recall@10 at ef=256 is {r256}"
-        );
+        assert!(r256 >= bar + 0.03, "{metric:?} recall@10 at ef=256 is {r256}");
         // Under inner product a low-norm point can be nobody's neighbour, so
         // only the metric spaces must stay (almost) fully connected.
         let reach = reachable_fraction(idx.graph(), n);
@@ -81,9 +74,7 @@ fn results_are_sorted_unique_and_bounded() {
         if reachable_fraction(idx.graph(), n) == 1.0 {
             let exact = idx.brute_force(&q, k, &|_| true).unwrap();
             let r = idx.search(&q, k, n).unwrap();
-            if r.iter().map(|x| x.id).collect::<Vec<_>>()
-                != exact.iter().map(|x| x.id).collect::<Vec<_>>()
-            {
+            if r.iter().map(|x| x.id).collect::<Vec<_>>() != exact.iter().map(|x| x.id).collect::<Vec<_>>() {
                 return Err(format!("ef=n search {r:?} differs from exact {exact:?}"));
             }
         }
@@ -111,11 +102,7 @@ fn concurrent_inserts_and_searches() {
                     let r = idx.search(&base[qi * dim..(qi + 1) * dim], 10, 32).unwrap();
                     assert!(r.windows(2).all(|w| w[0] < w[1]));
                     for nb in &r {
-                        assert!(
-                            idx.vector(nb.id).is_some(),
-                            "search returned unpublished row {}",
-                            nb.id
-                        );
+                        assert!(idx.vector(nb.id).is_some(), "search returned unpublished row {}", nb.id);
                     }
                     searches += 1;
                 }
@@ -146,10 +133,7 @@ fn concurrent_inserts_and_searches() {
     let searches: usize = searchers.into_iter().map(|s| s.join().unwrap()).sum();
     assert!(searches > 0);
     assert_eq!(idx.check().unwrap().nodes, n);
-    assert_eq!(
-        idx.insert(&base[..dim]).unwrap_err().to_string(),
-        "index is full"
-    );
+    assert_eq!(idx.insert(&base[..dim]).unwrap_err().to_string(), "index is full");
 
     // Recall of the concurrently built graph, with ids mapped back to inputs.
     let truth = ground_truth(Metric::L2, dim, &base, &queries, 10, 4);
@@ -187,24 +171,14 @@ fn tombstones_are_never_returned_and_rebuild_drops_them() {
     let flat_live = FlatIndex::from_vectors(
         dim,
         Metric::L2,
-        &live
-            .iter()
-            .flat_map(|&i| base[i as usize * dim..][..dim].to_vec())
-            .collect::<Vec<_>>(),
+        &live.iter().flat_map(|&i| base[i as usize * dim..][..dim].to_vec()).collect::<Vec<_>>(),
     );
     let mut total = 0.0;
     for _ in 0..200 {
         let q = &base[rng.below(n) * dim..][..dim];
         let r = idx.search(q, 10, 64).unwrap();
-        assert!(
-            r.iter().all(|nb| !deleted[nb.id as usize]),
-            "deleted row returned"
-        );
-        let truth: Vec<u32> = flat_live
-            .search(q, 10)
-            .iter()
-            .map(|nb| live[nb.id as usize])
-            .collect();
+        assert!(r.iter().all(|nb| !deleted[nb.id as usize]), "deleted row returned");
+        let truth: Vec<u32> = flat_live.search(q, 10).iter().map(|nb| live[nb.id as usize]).collect();
         total += recall(&r.iter().map(|nb| nb.id).collect::<Vec<_>>(), &truth, 10);
     }
     let r = total / 200.0;
@@ -332,18 +306,12 @@ fn duplicates_inside_real_data_are_found() {
     let mut found = 0;
     for i in 0..n / 10 {
         let dst = (n / 2 + i) as u32;
-        let r = idx
-            .search(&base[dst as usize * dim..][..dim], 10, 64)
-            .unwrap();
+        let r = idx.search(&base[dst as usize * dim..][..dim], 10, 64).unwrap();
         if r.iter().any(|nb| nb.id == dst) {
             found += 1;
         }
     }
-    assert!(
-        found as f64 >= 0.97 * (n / 10) as f64,
-        "found {found} of {}",
-        n / 10
-    );
+    assert!(found as f64 >= 0.97 * (n / 10) as f64, "found {found} of {}", n / 10);
 }
 
 #[test]
@@ -353,16 +321,7 @@ fn concurrent_stress_keeps_invariants() {
         let mut rng = Rng::new(1000 + round);
         let (n, dim) = (3_000, 4);
         let base = Arc::new(clustered(&mut rng, n, dim, 3));
-        let idx = Arc::new(HnswIndex::new(
-            dim,
-            Metric::L2,
-            GraphParams {
-                m: 4,
-                ef_construction: 24,
-                seed: round,
-            },
-            n,
-        ));
+        let idx = Arc::new(HnswIndex::new(dim, Metric::L2, GraphParams { m: 4, ef_construction: 24, seed: round }, n));
         let threads: Vec<_> = (0..8)
             .map(|t| {
                 let (idx, base) = (idx.clone(), base.clone());

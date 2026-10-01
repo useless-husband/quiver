@@ -52,12 +52,7 @@ impl Arena {
 impl Drop for Arena {
     fn drop(&mut self) {
         // SAFETY: `ptr`/`len` came from `Box::into_raw` of a `[f32]` of `len`.
-        unsafe {
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                self.ptr.as_ptr(),
-                self.len,
-            )))
-        }
+        unsafe { drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(self.ptr.as_ptr(), self.len))) }
     }
 }
 
@@ -80,14 +75,7 @@ impl<'a> F32Space<'a> {
     /// A space over an immutable slice of `rows * dim` prepared vectors.
     pub fn over(data: &'a [f32], dim: usize, metric: Metric) -> F32Space<'a> {
         assert!(dim > 0 && data.len() % dim == 0);
-        F32Space {
-            base: data.as_ptr(),
-            dim,
-            rows: data.len() / dim,
-            metric,
-            k: kernels(),
-            _life: PhantomData,
-        }
+        F32Space { base: data.as_ptr(), dim, rows: data.len() / dim, metric, k: kernels(), _life: PhantomData }
     }
 
     #[inline]
@@ -222,11 +210,7 @@ impl HnswIndex {
 
     fn check_dim(&self, v: &[f32]) -> Result<()> {
         if v.len() != self.dim {
-            return invalid(format!(
-                "vector has {} dimensions, index has {}",
-                v.len(),
-                self.dim
-            ));
+            return invalid(format!("vector has {} dimensions, index has {}", v.len(), self.dim));
         }
         if v.iter().any(|x| !x.is_finite()) {
             return invalid("vector contains NaN or infinity");
@@ -240,9 +224,7 @@ impl HnswIndex {
         // SAFETY: `id` was handed out exactly once by `next.fetch_add`, so no
         // other thread writes this slot, and no thread reads it before the
         // `Release` store of WRITTEN below or a graph link to it.
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(self.arena.ptr.as_ptr().add(id * self.dim), self.dim)
-        };
+        let dst = unsafe { std::slice::from_raw_parts_mut(self.arena.ptr.as_ptr().add(id * self.dim), self.dim) };
         dst.copy_from_slice(v);
         if self.metric.normalizes() {
             crate::distance::normalize(dst);
@@ -310,11 +292,7 @@ impl HnswIndex {
     /// The stored (normalised, for cosine) vector of a row.
     pub fn vector(&self, id: u32) -> Option<&[f32]> {
         let st = self.state.get(id as usize)?.load(Ordering::Acquire);
-        if st == EMPTY {
-            None
-        } else {
-            Some(self.space().row(id))
-        }
+        if st == EMPTY { None } else { Some(self.space().row(id)) }
     }
 
     /// Marks a row deleted. Returns false if it was already deleted or does
@@ -354,27 +332,13 @@ impl HnswIndex {
     }
 
     /// Approximate search restricted to rows for which `accept` is true.
-    pub fn search_with<F: Fn(u32) -> bool>(
-        &self,
-        q: &[f32],
-        k: usize,
-        ef: usize,
-        accept: &F,
-    ) -> Result<Vec<Neighbor>> {
+    pub fn search_with<F: Fn(u32) -> bool>(&self, q: &[f32], k: usize, ef: usize, accept: &F) -> Result<Vec<Neighbor>> {
         let mut buf = Vec::new();
         let q = self.prepare_query(q, &mut buf)?;
         let mut sc = self.scratch();
         let space = self.space();
         let r = if self.has_deletes.load(Ordering::Acquire) {
-            graph::knn(
-                &self.graph,
-                &space,
-                q,
-                k,
-                ef,
-                &|id| !self.deleted.get(id as usize) && accept(id),
-                &mut sc,
-            )
+            graph::knn(&self.graph, &space, q, k, ef, &|id| !self.deleted.get(id as usize) && accept(id), &mut sc)
         } else {
             graph::knn(&self.graph, &space, q, k, ef, accept, &mut sc)
         };
@@ -390,35 +354,20 @@ impl HnswIndex {
         let mut sc = self.scratch();
         sc.dist_count = 0;
         let space = self.space();
-        let r = graph::knn(
-            &self.graph,
-            &space,
-            q,
-            k,
-            ef,
-            &|id| !self.deleted.get(id as usize),
-            &mut sc,
-        );
+        let r = graph::knn(&self.graph, &space, q, k, ef, &|id| !self.deleted.get(id as usize), &mut sc);
         let c = sc.dist_count;
         self.recycle(sc);
         Ok((r, c))
     }
 
     /// Exact search over every live row accepted by `accept`.
-    pub fn brute_force<F: Fn(u32) -> bool>(
-        &self,
-        q: &[f32],
-        k: usize,
-        accept: &F,
-    ) -> Result<Vec<Neighbor>> {
+    pub fn brute_force<F: Fn(u32) -> bool>(&self, q: &[f32], k: usize, accept: &F) -> Result<Vec<Neighbor>> {
         let mut buf = Vec::new();
         let q = self.prepare_query(q, &mut buf)?;
         let space = self.space();
         let mut top = TopK::new(k);
         for id in 0..self.len() as u32 {
-            if self.state[id as usize].load(Ordering::Acquire) != EMPTY
-                && !self.deleted.get(id as usize)
-                && accept(id)
+            if self.state[id as usize].load(Ordering::Acquire) != EMPTY && !self.deleted.get(id as usize) && accept(id)
             {
                 top.push(Neighbor::new(id, space.dist(q, id)));
             }
@@ -427,11 +376,7 @@ impl HnswIndex {
     }
 
     /// Compresses every row (in id order) for [`search_quantized`](Self::search_quantized).
-    pub fn build_codes(
-        &self,
-        q: crate::quant::Quantization,
-        threads: usize,
-    ) -> Result<Option<crate::quant::Codes>> {
+    pub fn build_codes(&self, q: crate::quant::Quantization, threads: usize) -> Result<Option<crate::quant::Codes>> {
         let n = self.len();
         let mut data = Vec::with_capacity(n * self.dim);
         for id in 0..n as u32 {
@@ -440,8 +385,7 @@ impl HnswIndex {
                 None => data.extend(std::iter::repeat_n(0.0, self.dim)),
             }
         }
-        crate::quant::Codes::build(q, &data, self.dim, self.metric, self.params().seed, threads)
-            .map_err(Error::Invalid)
+        crate::quant::Codes::build(q, &data, self.dim, self.metric, self.params().seed, threads).map_err(Error::Invalid)
     }
 
     /// Search that walks the graph with compressed distances and re-ranks
@@ -461,24 +405,14 @@ impl HnswIndex {
         }
         let mut sc = self.scratch();
         let accept = |id: u32| !self.deleted.get(id as usize);
-        let r = codes.search(
-            &self.graph,
-            &self.space(),
-            q,
-            k,
-            ef,
-            rerank,
-            &accept,
-            &mut sc,
-        );
+        let r = codes.search(&self.graph, &self.space(), q, k, ef, rerank, &accept, &mut sc);
         self.recycle(sc);
         Ok(r)
     }
 
     /// Checks the graph invariants over every linked row.
     pub fn check(&self) -> std::result::Result<GraphStats, String> {
-        let ids = (0..self.len() as u32)
-            .filter(|&i| self.state[i as usize].load(Ordering::Acquire) == LINKED);
+        let ids = (0..self.len() as u32).filter(|&i| self.state[i as usize].load(Ordering::Acquire) == LINKED);
         graph::check_invariants(&self.graph, ids)
     }
 
@@ -489,11 +423,7 @@ impl HnswIndex {
 
     /// Builds a new index containing only the live rows (the periodic rebuild
     /// that clears tombstones). Returns it with the old-to-new id mapping.
-    pub fn rebuilt(
-        &self,
-        capacity: usize,
-        threads: usize,
-    ) -> Result<(HnswIndex, Vec<Option<u32>>)> {
+    pub fn rebuilt(&self, capacity: usize, threads: usize) -> Result<(HnswIndex, Vec<Option<u32>>)> {
         let n = self.len();
         let mut map = vec![None; n];
         let mut data = Vec::new();
@@ -507,12 +437,7 @@ impl HnswIndex {
                 }
             }
         }
-        let fresh = HnswIndex::new(
-            self.dim,
-            self.metric,
-            *self.params(),
-            capacity.max(next as usize),
-        );
+        let fresh = HnswIndex::new(self.dim, self.metric, *self.params(), capacity.max(next as usize));
         if next > 0 {
             fresh.insert_batch(&data, threads)?;
         }

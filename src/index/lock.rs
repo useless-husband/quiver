@@ -23,11 +23,7 @@ impl SpinLock {
     pub fn lock(&self) -> SpinGuard<'_> {
         let mut spins = 0u32;
         loop {
-            if self
-                .0
-                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
-                .is_ok()
-            {
+            if self.0.compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
                 return SpinGuard(self);
             }
             while self.0.load(Ordering::Relaxed) {
@@ -64,10 +60,7 @@ mod tests {
 
     #[test]
     fn mutual_exclusion() {
-        let s = Arc::new(Shared {
-            lock: SpinLock::new(),
-            value: UnsafeCell::new(0),
-        });
+        let s = Arc::new(Shared { lock: SpinLock::new(), value: UnsafeCell::new(0) });
         let threads: Vec<_> = (0..4)
             .map(|_| {
                 let s = s.clone();

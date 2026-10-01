@@ -34,14 +34,7 @@ pub struct PqQuery {
 
 impl Pq {
     /// Trains codebooks on (a sample of) `data` and encodes every row.
-    pub fn build(
-        data: &[f32],
-        dim: usize,
-        m: usize,
-        metric: Metric,
-        seed: u64,
-        threads: usize,
-    ) -> Result<Pq, String> {
+    pub fn build(data: &[f32], dim: usize, m: usize, metric: Metric, seed: u64, threads: usize) -> Result<Pq, String> {
         if m == 0 || dim % m != 0 {
             return Err(format!("pq: m={m} must divide the dimension {dim}"));
         }
@@ -64,14 +57,7 @@ impl Pq {
             let c = kmeans(&sub, dsub, KS, 20, seed ^ j as u64, threads);
             centroids[j * KS * dsub..(j + 1) * KS * dsub].copy_from_slice(&c);
         }
-        let mut pq = Pq {
-            dim,
-            m,
-            dsub,
-            metric,
-            centroids,
-            codes: Vec::new(),
-        };
+        let mut pq = Pq { dim, m, dsub, metric, centroids, codes: Vec::new() };
         let mut codes = vec![0u8; rows * m];
         let chunk = rows.div_ceil(threads.max(1)).max(1);
         let pq_ref = &pq;
@@ -89,24 +75,11 @@ impl Pq {
         Ok(pq)
     }
 
-    pub fn from_parts(
-        dim: usize,
-        m: usize,
-        metric: Metric,
-        centroids: Vec<f32>,
-        codes: Vec<u8>,
-    ) -> Option<Pq> {
+    pub fn from_parts(dim: usize, m: usize, metric: Metric, centroids: Vec<f32>, codes: Vec<u8>) -> Option<Pq> {
         if m == 0 || dim % m != 0 || centroids.len() != m * KS * (dim / m) || codes.len() % m != 0 {
             return None;
         }
-        Some(Pq {
-            dim,
-            m,
-            dsub: dim / m,
-            metric,
-            centroids,
-            codes,
-        })
+        Some(Pq { dim, m, dsub: dim / m, metric, centroids, codes })
     }
 
     pub fn m(&self) -> usize {
@@ -153,10 +126,7 @@ impl Pq {
 
     pub fn decode(&self, id: u32) -> Vec<f32> {
         let code = &self.codes[id as usize * self.m..(id as usize + 1) * self.m];
-        code.iter()
-            .enumerate()
-            .flat_map(|(j, &c)| self.centroid(j, c as usize).to_vec())
-            .collect()
+        code.iter().enumerate().flat_map(|(j, &c)| self.centroid(j, c as usize).to_vec()).collect()
     }
 
     /// Builds the ADC table for a prepared query.
@@ -208,11 +178,7 @@ impl Space for PqSpace<'_> {
             j += 1;
         }
         let s = (a + b) + (c + d);
-        if self.pq.metric == Metric::Cosine {
-            1.0 + s
-        } else {
-            s
-        }
+        if self.pq.metric == Metric::Cosine { 1.0 + s } else { s }
     }
 
     #[inline]
@@ -246,16 +212,12 @@ mod tests {
                 let rec = pq.decode(id);
                 let want = metric.prepared_distance(k, &q, &rec);
                 let got = sp.dist(&pq.query(&q), id);
-                assert!(
-                    (got - want).abs() <= 1e-4 * want.abs().max(1.0),
-                    "{metric:?}: {got} vs {want}"
-                );
+                assert!((got - want).abs() <= 1e-4 * want.abs().max(1.0), "{metric:?}: {got} vs {want}");
             }
             // Quantization error is far below the data spread.
-            let mse: f32 = (0..3000u32)
-                .map(|i| (k.l2sq_f32)(&data[i as usize * dim..][..dim], &pq.decode(i)))
-                .sum::<f32>()
-                / 3000.0;
+            let mse: f32 =
+                (0..3000u32).map(|i| (k.l2sq_f32)(&data[i as usize * dim..][..dim], &pq.decode(i))).sum::<f32>()
+                    / 3000.0;
             let var: f32 = data.iter().map(|x| x * x).sum::<f32>() / 3000.0;
             assert!(mse < 0.25 * var, "{metric:?}: mse {mse} vs energy {var}");
         }

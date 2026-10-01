@@ -7,14 +7,7 @@ use crate::rng::Rng;
 /// Lloyd iterations. Initial centroids are distinct random points; an empty
 /// cluster is re-seeded by splitting the largest one (the FAISS approach),
 /// so every centroid stays in use. Returns `k * dim` floats.
-pub fn kmeans(
-    data: &[f32],
-    dim: usize,
-    k: usize,
-    iters: usize,
-    seed: u64,
-    threads: usize,
-) -> Vec<f32> {
+pub fn kmeans(data: &[f32], dim: usize, k: usize, iters: usize, seed: u64, threads: usize) -> Vec<f32> {
     let n = data.len() / dim;
     assert!(n > 0 && k > 0);
     let kern = kernels();

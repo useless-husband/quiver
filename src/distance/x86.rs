@@ -30,10 +30,7 @@ pub unsafe fn l2sq_f32(a: &[f32], b: &[f32]) -> f32 {
         let mut i = 0;
         while i + 16 <= n {
             let d0 = _mm256_sub_ps(_mm256_loadu_ps(pa.add(i)), _mm256_loadu_ps(pb.add(i)));
-            let d1 = _mm256_sub_ps(
-                _mm256_loadu_ps(pa.add(i + 8)),
-                _mm256_loadu_ps(pb.add(i + 8)),
-            );
+            let d1 = _mm256_sub_ps(_mm256_loadu_ps(pa.add(i + 8)), _mm256_loadu_ps(pb.add(i + 8)));
             acc0 = _mm256_fmadd_ps(d0, d0, acc0);
             acc1 = _mm256_fmadd_ps(d1, d1, acc1);
             i += 16;
@@ -66,11 +63,7 @@ pub unsafe fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
         let mut i = 0;
         while i + 16 <= n {
             acc0 = _mm256_fmadd_ps(_mm256_loadu_ps(pa.add(i)), _mm256_loadu_ps(pb.add(i)), acc0);
-            acc1 = _mm256_fmadd_ps(
-                _mm256_loadu_ps(pa.add(i + 8)),
-                _mm256_loadu_ps(pb.add(i + 8)),
-                acc1,
-            );
+            acc1 = _mm256_fmadd_ps(_mm256_loadu_ps(pa.add(i + 8)), _mm256_loadu_ps(pb.add(i + 8)), acc1);
             i += 16;
         }
         if i + 8 <= n {

@@ -10,11 +10,7 @@ pub fn run(raw: &[String]) -> Result<(), String> {
     let rest = &raw[1..];
     match cmd.as_str() {
         "version" | "--version" => {
-            println!(
-                "quiver {} (kernels: {})",
-                env!("CARGO_PKG_VERSION"),
-                quiver::distance::kernels().name
-            );
+            println!("quiver {} (kernels: {})", env!("CARGO_PKG_VERSION"), quiver::distance::kernels().name);
             Ok(())
         }
         "bench" => {
