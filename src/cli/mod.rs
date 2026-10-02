@@ -20,6 +20,8 @@ pub fn run(raw: &[String]) -> Result<(), String> {
             let a = Args::parse(rest.get(1..).unwrap_or(&[]));
             match rest.first().map(String::as_str) {
                 Some("ann") => bench::ann(&a),
+                Some("kernels") => bench::kernels(&a),
+                Some("filter") => bench::filter(&a),
                 _ => Err("usage".into()),
             }
         }

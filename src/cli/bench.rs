@@ -147,8 +147,13 @@ pub fn ann(a: &Args) -> Result<(), String> {
         let quant = quiver::quant::Quantization::parse(qname).ok_or(format!("unknown --quant {qname}"))?;
         let t0 = Instant::now();
         let codes = idx.build_codes(quant, build_threads).map_err(|e| e.to_string())?;
+        // Runs forced onto other kernels (QUIVER_KERNELS) are labelled, so
+        // they are never mistaken for the default build.
+        let kname = quiver::distance::kernels().name;
+        let best = quiver::distance::available().last().map_or("", |k| k.name);
+        let suffix = if kname == best { String::new() } else { format!("-{kname}") };
         let (variant, mb) = match &codes {
-            None => ("hnsw-f32".to_string(), index_mb),
+            None => (format!("hnsw-f32{suffix}"), index_mb),
             Some(c) => {
                 eprintln!(
                     "{} codes: {:.1} MB, built in {:.1} s",
@@ -159,7 +164,7 @@ pub fn ann(a: &Args) -> Result<(), String> {
                 // Resident set for a quantized segment: graph + codes; the f32
                 // vectors are only read for re-ranking (memory-mapped).
                 let graph_mb = idx.graph().memory_bytes() as f64 / 1e6;
-                (format!("hnsw-{}-rerank{rerank}", quant.label()), graph_mb + c.bytes() as f64 / 1e6)
+                (format!("hnsw-{}-rerank{rerank}{suffix}", quant.label()), graph_mb + c.bytes() as f64 / 1e6)
             }
         };
         for &t in &threads {
@@ -186,6 +191,223 @@ pub fn ann(a: &Args) -> Result<(), String> {
                 writeln!(sink, "{line}").map_err(|e| e.to_string())?;
             }
         }
+    }
+    Ok(())
+}
+
+/// Times `f` over `pairs` input pairs; returns the median ns per call of
+/// `runs` runs.
+fn time_kernel<F: Fn(usize) -> f64>(pairs: usize, f: F) -> f64 {
+    let calls_per_run = 2_000_000usize;
+    let reps = (calls_per_run / pairs).max(1);
+    let mut sink = 0.0;
+    for i in 0..pairs * 200 {
+        sink += f(i % pairs);
+    }
+    let mut samples = Vec::new();
+    for _ in 0..7 {
+        let t0 = Instant::now();
+        for _ in 0..reps {
+            for i in 0..pairs {
+                sink += f(std::hint::black_box(i));
+            }
+        }
+        samples.push(t0.elapsed().as_nanos() as f64 / (reps * pairs) as f64);
+    }
+    std::hint::black_box(sink);
+    samples.sort_by(f64::total_cmp);
+    samples[samples.len() / 2]
+}
+
+/// `quiver bench kernels`: every available kernel table on L1-resident
+/// inputs, at several dimensions.
+pub fn kernels(a: &Args) -> Result<(), String> {
+    let dims = a.list("dims", &[32usize, 100, 128, 384, 768, 784, 1536])?;
+    let out = a.str("out");
+    a.finish()?;
+    let tables = quiver::distance::available();
+    let mut rng = quiver::rng::Rng::new(1);
+    let pairs = 32;
+    let mut lines = vec!["kernel,impl,dim,ns_per_call,gflops".to_string()];
+    println!("{:<10} {:<13} {:>5} {:>10} {:>8}", "kernel", "impl", "dim", "ns/call", "GFLOP/s");
+    for &dim in &dims {
+        let fa: Vec<f32> = (0..pairs * dim).map(|_| rng.normal()).collect();
+        let fb: Vec<f32> = (0..pairs * dim).map(|_| rng.normal()).collect();
+        let ia: Vec<i8> = (0..pairs * dim).map(|_| rng.next_u64() as i8).collect();
+        let ib: Vec<i8> = (0..pairs * dim).map(|_| rng.next_u64() as i8).collect();
+        let sl = |v: &'static [f32], i: usize| &v[i * dim..(i + 1) * dim];
+        let fa: &'static [f32] = Box::leak(fa.into_boxed_slice());
+        let fb: &'static [f32] = Box::leak(fb.into_boxed_slice());
+        let ia: &'static [i8] = Box::leak(ia.into_boxed_slice());
+        let ib: &'static [i8] = Box::leak(ib.into_boxed_slice());
+        for k in &tables {
+            let cases: [(&str, f64, Box<dyn Fn(usize) -> f64>); 5] = [
+                ("l2sq_f32", 3.0, Box::new(move |i| (k.l2sq_f32)(sl(fa, i), sl(fb, i)) as f64)),
+                ("dot_f32", 2.0, Box::new(move |i| (k.dot_f32)(sl(fa, i), sl(fb, i)) as f64)),
+                ("cos_f32", 6.0, Box::new(move |i| (k.cosine_f32)(sl(fa, i), sl(fb, i)) as f64)),
+                (
+                    "dot_i8",
+                    2.0,
+                    Box::new(move |i| (k.dot_i8)(&ia[i * dim..(i + 1) * dim], &ib[i * dim..(i + 1) * dim]) as f64),
+                ),
+                (
+                    "l2sq_i8",
+                    3.0,
+                    Box::new(move |i| (k.l2sq_i8)(&ia[i * dim..(i + 1) * dim], &ib[i * dim..(i + 1) * dim]) as f64),
+                ),
+            ];
+            for (name, flops, f) in cases.iter() {
+                let ns = time_kernel(pairs, f);
+                let gf = flops * dim as f64 / ns;
+                println!("{name:<10} {:<13} {dim:>5} {ns:>10.2} {gf:>8.1}", k.name);
+                lines.push(format!("{name},{},{dim},{ns:.3},{gf:.2}", k.name));
+            }
+        }
+    }
+    if let Some(p) = out {
+        std::fs::write(&p, lines.join("\n") + "\n").map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// `quiver bench filter`: filtered search at several selectivities through a
+/// real collection (one sealed, memory-mapped segment), against exact
+/// filtered ground truth.
+pub fn filter(a: &Args) -> Result<(), String> {
+    use quiver::collection::{Collection, CollectionConfig, Options, Point, Query, Strategy};
+    use quiver::payload::Filter;
+    let e = |x: quiver::Error| x.to_string();
+    let (n_all, dim, base) = read_fbin(&PathBuf::from(a.req("base")?)).map_err(e)?;
+    let (nq_all, _, queries) = read_fbin(&PathBuf::from(a.req("queries")?)).map_err(e)?;
+    let metric = Metric::parse(&a.req("metric")?).ok_or("--metric must be l2, ip or cosine")?;
+    let n = a.get("n", n_all)?.min(n_all);
+    let nq = a.get("nq", 1000usize)?.min(nq_all);
+    let k = a.get("k", 10usize)?;
+    let ef = a.get("ef", 64usize)?;
+    let dataset = a.get("dataset", "unnamed".to_string())?;
+    let threads = a.get("build-threads", 4usize)?;
+    let pcts = a.list("selectivity", &[50.0f64, 20.0, 10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1])?;
+    let out = a.str("out");
+    a.finish()?;
+    let base = &base[..n * dim];
+    let mut rng = quiver::rng::Rng::new(42);
+    // bucket uniform in 0..10000, so `bucket < 100 * pct` selects pct %.
+    let bucket: Vec<u32> = (0..n).map(|_| rng.below(10_000) as u32).collect();
+    let dir = std::env::temp_dir().join(format!("quiver-bench-filter-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut cfg = CollectionConfig::new(dim, metric);
+    cfg.segment_rows = n.max(16);
+    let opts = Options { sync: quiver::storage::SyncMode::None, threads };
+    let c = Collection::create(&dir, "bench", cfg, opts).map_err(e)?;
+    let t0 = Instant::now();
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|s| {
+        for _ in 0..threads {
+            s.spawn(|| {
+                loop {
+                    let start = next.fetch_add(256, Ordering::Relaxed);
+                    if start >= n {
+                        break;
+                    }
+                    let pts: Vec<Point> = (start..(start + 256).min(n))
+                        .map(|i| Point {
+                            id: i as u64,
+                            vector: base[i * dim..(i + 1) * dim].to_vec(),
+                            payload: Some(serde_json::json!({"bucket": bucket[i]})),
+                        })
+                        .collect();
+                    c.upsert(&pts).expect("upsert");
+                }
+            });
+        }
+    });
+    c.checkpoint().map_err(e)?;
+    eprintln!("loaded {n} points and sealed in {:.1}s", t0.elapsed().as_secs_f64());
+    let header = "dataset,n,selectivity_pct,matched,method,ef,recall,qps,chosen";
+    let mut lines = vec![header.to_string()];
+    println!("{header}");
+    let flat = quiver::FlatIndex::from_vectors(dim, metric, base);
+    for &pct in &pcts {
+        let limit = (pct * 100.0).round() as u32;
+        let matched = bucket.iter().filter(|&&b| b < limit).count();
+        let fjson = serde_json::json!({"field": "bucket", "lt": limit});
+        let f = Filter::parse(&fjson).map_err(e)?;
+        // Exact filtered ground truth.
+        let truth: Vec<Vec<u64>> = {
+            let mut t = vec![Vec::new(); nq];
+            let chunk = nq.div_ceil(threads);
+            std::thread::scope(|s| {
+                for (ci, slot) in t.chunks_mut(chunk).enumerate() {
+                    let (flat, bucket, queries) = (&flat, &bucket, &queries);
+                    s.spawn(move || {
+                        for (j, o) in slot.iter_mut().enumerate() {
+                            let qi = ci * chunk + j;
+                            let q = &queries[qi * dim..(qi + 1) * dim];
+                            *o = flat
+                                .search_with(q, k, |i| bucket[i as usize] < limit)
+                                .iter()
+                                .map(|x| x.id as u64)
+                                .collect();
+                        }
+                    });
+                }
+            });
+            t
+        };
+        let mut run = |method: &str, strategy: Option<Strategy>| -> Result<(), String> {
+            let mut total = 0.0;
+            let mut chosen = String::new();
+            let t0 = Instant::now();
+            for qi in 0..nq {
+                let qv = &queries[qi * dim..(qi + 1) * dim];
+                let got: Vec<u64> = match strategy {
+                    Some(st) => {
+                        let mut q = Query::new(qv, k);
+                        q.ef = Some(ef);
+                        q.filter = Some(&f);
+                        q.strategy = st;
+                        let r = c.search(&q).map_err(e)?;
+                        if chosen.is_empty() {
+                            chosen = r
+                                .plan
+                                .iter()
+                                .filter_map(|p| p.strategy)
+                                .map(|s| format!("{s:?}").to_lowercase())
+                                .collect::<Vec<_>>()
+                                .join("+");
+                        }
+                        r.hits.iter().map(|h| h.id).collect()
+                    }
+                    None => {
+                        // Post-filtering: fetch k / selectivity candidates
+                        // unfiltered, keep the matching ones.
+                        let kk = ((k as f64 * 100.0 / pct).ceil() as usize).clamp(k, 4096);
+                        let mut q = Query::new(qv, kk);
+                        q.ef = Some(kk.max(ef));
+                        let r = c.search(&q).map_err(e)?;
+                        r.hits.iter().map(|h| h.id).filter(|&id| bucket[id as usize] < limit).take(k).collect()
+                    }
+                };
+                let t = &truth[qi];
+                let hits = got.iter().filter(|id| t.contains(id)).count();
+                total += if t.is_empty() { 1.0 } else { hits as f64 / t.len() as f64 };
+            }
+            let qps = nq as f64 / t0.elapsed().as_secs_f64();
+            let line =
+                format!("{dataset},{n},{pct},{matched},{method},{ef},{:.4},{qps:.1},{chosen}", total / nq as f64);
+            println!("{line}");
+            lines.push(line);
+            Ok(())
+        };
+        run("graph", Some(Strategy::Graph))?;
+        run("brute", Some(Strategy::Brute))?;
+        run("auto", Some(Strategy::Auto))?;
+        run("postfilter", None)?;
+    }
+    drop(c);
+    let _ = std::fs::remove_dir_all(&dir);
+    if let Some(p) = out {
+        std::fs::write(&p, lines.join("\n") + "\n").map_err(|e| e.to_string())?;
     }
     Ok(())
 }

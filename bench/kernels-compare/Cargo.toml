@@ -1,0 +1,16 @@
+[package]
+name = "kernels-compare"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone: not part of the quiver crate or its dependency tree.
+[workspace]
+
+[dependencies]
+quiver = { path = "../.." }
+numkong = "7"
+simsimd = "6"
+
+[profile.release]
+debug = 1
