@@ -219,6 +219,9 @@ fn time_kernel<F: Fn(usize) -> f64>(pairs: usize, f: F) -> f64 {
     samples[samples.len() / 2]
 }
 
+/// A kernel under test: name, flops per element, and the call.
+type KernelCase<'a> = (&'static str, f64, Box<dyn Fn(usize) -> f64 + 'a>);
+
 /// `quiver bench kernels`: every available kernel table on L1-resident
 /// inputs, at several dimensions.
 pub fn kernels(a: &Args) -> Result<(), String> {
@@ -241,7 +244,7 @@ pub fn kernels(a: &Args) -> Result<(), String> {
         let ia: &'static [i8] = Box::leak(ia.into_boxed_slice());
         let ib: &'static [i8] = Box::leak(ib.into_boxed_slice());
         for k in &tables {
-            let cases: [(&str, f64, Box<dyn Fn(usize) -> f64>); 5] = [
+            let cases: [KernelCase<'_>; 5] = [
                 ("l2sq_f32", 3.0, Box::new(move |i| (k.l2sq_f32)(sl(fa, i), sl(fb, i)) as f64)),
                 ("dot_f32", 2.0, Box::new(move |i| (k.dot_f32)(sl(fa, i), sl(fb, i)) as f64)),
                 ("cos_f32", 6.0, Box::new(move |i| (k.cosine_f32)(sl(fa, i), sl(fb, i)) as f64)),

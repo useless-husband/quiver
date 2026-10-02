@@ -182,7 +182,7 @@ impl Pod for f32 {}
 /// Reinterprets bytes as a slice of `T`; `None` if misaligned or ragged.
 pub fn cast<T: Pod>(b: &[u8]) -> Option<&[T]> {
     let size = std::mem::size_of::<T>();
-    if b.len() % size != 0 || (b.as_ptr() as usize) % std::mem::align_of::<T>() != 0 {
+    if !b.len().is_multiple_of(size) || !(b.as_ptr() as usize).is_multiple_of(std::mem::align_of::<T>()) {
         return None;
     }
     // SAFETY: alignment and length checked; every bit pattern is a valid `T`

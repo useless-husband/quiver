@@ -96,11 +96,11 @@ impl TopK {
         }
         if self.heap.len() < self.k {
             self.heap.push(n);
-        } else if let Some(top) = self.heap.peek() {
-            if n < *top {
-                self.heap.pop();
-                self.heap.push(n);
-            }
+        } else if let Some(top) = self.heap.peek()
+            && n < *top
+        {
+            self.heap.pop();
+            self.heap.push(n);
         }
     }
 

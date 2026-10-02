@@ -296,7 +296,7 @@ impl SegmentFile {
                     return Err("int8 blob has the wrong size".into());
                 }
                 let f32s = |r: std::ops::Range<usize>| -> Vec<f32> {
-                    b[r].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect()
+                    b[r].as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect()
                 };
                 let center = f32s(8..8 + clen * 4);
                 let scales = f32s(8 + clen * 4..8 + clen * 4 + rows * 4);
@@ -314,8 +314,7 @@ impl SegmentFile {
                 if b.len() != 8 + clen * 4 + rows * qm {
                     return Err("pq blob has the wrong size".into());
                 }
-                let cent =
-                    b[8..8 + clen * 4].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+                let cent = b[8..8 + clen * 4].as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
                 let codes = b[8 + clen * 4..].to_vec();
                 Pq::from_parts(dim, qm, self.metric, cent, codes).map(Codes::Pq).map(Some).ok_or("bad pq codes".into())
             }
@@ -423,7 +422,7 @@ pub fn read_tombstones(path: &Path, rows: usize) -> Result<Vec<u64>> {
     if crc32c(&b[24..]) != u32::from_le_bytes(b[16..20].try_into().unwrap()) {
         return corrupt(path, "tombstone checksum mismatch");
     }
-    Ok(b[24..].chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect())
+    Ok(b[24..].as_chunks::<8>().0.iter().map(|c| u64::from_le_bytes(*c)).collect())
 }
 
 #[cfg(test)]

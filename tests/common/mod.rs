@@ -37,20 +37,21 @@ impl Server {
             .args(extra)
             .stdout(Stdio::null())
             .stderr(logf);
-        let child = cmd.spawn().expect("spawn quiver serve");
+        // Owned by `Server` from the start, so its Drop kills and reaps the
+        // child even if start-up times out below.
+        let mut server = Server { child: cmd.spawn().expect("spawn quiver serve"), addr: String::new(), log };
         let t0 = Instant::now();
         loop {
-            if let Ok(s) = std::fs::read_to_string(&port_file) {
-                if !s.is_empty() {
-                    let _ = std::fs::remove_file(&port_file);
-                    return Server { child, addr: s.trim().to_string(), log };
-                }
+            if let Ok(s) = std::fs::read_to_string(&port_file)
+                && !s.is_empty()
+            {
+                let _ = std::fs::remove_file(&port_file);
+                server.addr = s.trim().to_string();
+                return server;
             }
-            assert!(
-                t0.elapsed() < Duration::from_secs(60),
-                "server did not start; log:\n{}",
-                std::fs::read_to_string(&log).unwrap_or_default()
-            );
+            if t0.elapsed() > Duration::from_secs(60) {
+                panic!("server did not start; log:\n{}", std::fs::read_to_string(&server.log).unwrap_or_default());
+            }
             std::thread::sleep(Duration::from_millis(20));
         }
     }

@@ -203,10 +203,10 @@ pub fn flatten(payload: &Value, f: &mut impl FnMut(&str, Scalar)) {
                 }
             }
             other => {
-                if !path.is_empty() {
-                    if let Some(s) = Scalar::from_json(other) {
-                        f(path, s);
-                    }
+                if !path.is_empty()
+                    && let Some(s) = Scalar::from_json(other)
+                {
+                    f(path, s);
                 }
             }
         }

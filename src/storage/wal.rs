@@ -118,7 +118,7 @@ fn decode(mut b: &[u8]) -> Option<WalRecord> {
         KIND_UPSERT => {
             let dim = u32_at(&mut b)? as usize;
             let raw = take(&mut b, dim.checked_mul(4)?)?;
-            let vector = raw.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+            let vector = raw.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
             let plen = u32_at(&mut b)? as usize;
             let payload = take(&mut b, plen)?.to_vec();
             WalOp::Upsert { id, vector, payload }

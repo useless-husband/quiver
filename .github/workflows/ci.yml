@@ -33,13 +33,16 @@ jobs:
         env:
           QUIVER_KERNELS: scalar
       - run: ./target/release/quiver version
+      - run: cargo run --release --example library
 
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned so that lints added in later releases do not break the build.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check

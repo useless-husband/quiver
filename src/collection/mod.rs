@@ -147,10 +147,10 @@ impl CollectionConfig {
         if !self.brute_force_factor.is_finite() || self.brute_force_factor < 0.0 {
             return invalid("brute_force_factor must be a non-negative number");
         }
-        if let Quantization::Pq { m } = self.quantization {
-            if m == 0 || self.dim % m != 0 {
-                return invalid(format!("pq m={m} must divide dim={}", self.dim));
-            }
+        if let Quantization::Pq { m } = self.quantization
+            && (m == 0 || !self.dim.is_multiple_of(m))
+        {
+            return invalid(format!("pq m={m} must divide dim={}", self.dim));
         }
         Ok(())
     }
@@ -985,10 +985,11 @@ impl Collection {
                     o.tombstone(j as u32);
                     continue;
                 }
-                if let Some(Slot::Live { seg, row, lsn }) = map.get(&ids[j]).copied() {
-                    if seg == inputs[i].id && row == r {
-                        map.insert(ids[j], Slot::Live { seg: o.id, row: j as u32, lsn });
-                    }
+                if let Some(Slot::Live { seg, row, lsn }) = map.get(&ids[j]).copied()
+                    && seg == inputs[i].id
+                    && row == r
+                {
+                    map.insert(ids[j], Slot::Live { seg: o.id, row: j as u32, lsn });
                 }
             }
             o.dirty.store(false, Ordering::Release);

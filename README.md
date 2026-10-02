@@ -2,7 +2,7 @@
 
 **A compact vector database in Rust: a hand-written HNSW index, Arm NEON distance kernels, int8 and product quantization, a write-ahead log with crash recovery, filtered search and an HTTP API, benchmarked against hnswlib and FAISS.**
 
-quiver answers "which stored vectors are closest to this one?" for collections of `(id, vector, JSON payload)` points, fast enough to serve from one process and without losing an acknowledged write when that process is killed. It is not a new algorithm: hnswlib, FAISS, Qdrant and others do the same job at much larger scale. What it offers is a compact, well-tested implementation (about 9,000 lines including tests) in which every claim below is backed by a command you can run, and benchmarks that say where it loses.
+quiver answers "which stored vectors are closest to this one?" for collections of `(id, vector, JSON payload)` points, fast enough to serve from one process and without losing an acknowledged write when that process is killed. It is not a new algorithm: hnswlib, FAISS, Qdrant and others do the same job at much larger scale. What it offers is a compact, well-tested implementation (about 9,500 lines of Rust including tests) in which every claim below is backed by a command you can run, and benchmarks that say where it loses.
 
 [繁體中文說明](README.zh-TW.md) · [Design](docs/DESIGN.md) · [Benchmarks](docs/benchmarks.md) · [導讀（中文白話）](docs/導讀.zh-TW.md)
 
@@ -70,7 +70,49 @@ The `plan` field shows, per segment, how many rows matched the filter and which 
 
 The [design document](docs/DESIGN.md) covers the hard parts in detail: the memory-ordering argument, the checkpoint crash points, compaction under concurrent writes, and the alternatives that were rejected.
 
-RESULTS_PLACEHOLDER
+## Results
+
+Measured on an Apple M5 (macOS 27, shared with other work), M = 16,
+efConstruction = 200 for every HNSW, 6 build threads; full method, commands and
+all numbers in [docs/benchmarks.md](docs/benchmarks.md), raw data in
+`bench/results/`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="bench/results/ann-glove-100-angular-dark.svg">
+  <img alt="GloVe-100 recall@10 vs queries per second: quiver, hnswlib, FAISS HNSW and IVF-PQ, 1 and 6 query threads" src="bench/results/ann-glove-100-angular-light.svg">
+</picture>
+
+Best QPS among measured points reaching the recall level (single query thread / 6 threads):
+
+| | GloVe-100 (1.18M, cosine) recall 0.90 | Fashion-MNIST (60k, L2) recall 0.99 | build s (GloVe / Fashion) |
+|---|---|---|---|
+| quiver HNSW f32 | 3,006 / 13,058 | 15,685 / 57,712 | 50.6 / 3.6 |
+| quiver HNSW int8 + re-rank | 3,860 / 16,544 | 26,525 / 104,997 | 50.6 / 3.6 |
+| FAISS HNSWFlat | 2,095 / 9,602 | 17,566 / 50,646 | 59.1 / 3.7 |
+| hnswlib | 1,730 / 7,322 | 5,942 / 28,322 | 95.5 / 7.5 |
+| quiver HNSW f32, scalar kernels | 2,276 / 10,105 | 5,959 / 28,810 | 71.3 / 7.7 |
+| FAISS IVF-PQ + refine | (max recall 0.895) | 2,760 / 10,428 | 11.7 / 7.0 |
+
+What these numbers do and do not show:
+
+- **hnswlib has no NEON kernels** (its SIMD code is x86-only; the arm64 build runs a plain loop). Run with its own scalar kernels, quiver matches hnswlib within 3% on Fashion-MNIST, so quiver's lead over hnswlib on this machine comes from its distance kernels, not from a better graph.
+- **Where quiver loses:** FAISS HNSWFlat is 12-15% faster single-threaded on Fashion-MNIST; quiver's PQ mode reaches only recall 0.79 on GloVe (FAISS IVF-PQ + refine: 0.895) and keeps the whole HNSW graph in memory (222 MB vs FAISS IVF-PQ's 41 MB); FAISS IVF-PQ builds 4x faster than any HNSW.
+- **int8 + re-ranking** is quiver's best mode here: faster than f32 at equal recall, with 57 MB resident instead of 198 MB on Fashion-MNIST (the f32 vectors stay in the memory-mapped file for re-ranking).
+- On GloVe all HNSW implementations stop near recall 0.925 at M = 16; higher recall needs a larger M.
+
+**Kernels** (ns per call, L1-resident inputs, same harness for all; NumKong 7 accumulates f32 in f64 by design, SimSIMD 6.5 uses one accumulator):
+
+| | dim | scalar | quiver NEON | NumKong 7 | SimSIMD 6 |
+|---|---|---|---|---|---|
+| L2 f32 | 768 | 298.5 | 40.3 | 262.4 | 115.2 |
+| dot f32 | 768 | 303.1 | 40.7 | 145.0 | 101.6 |
+| L2 int8 | 768 | 45.2 | 9.9 | 15.1 | 15.2 |
+
+**Filtered search** picks brute force or graph traversal per segment from the exact match count. On both datasets it chose the faster strategy at every measured selectivity (50% down to 0.1%), with recall 1.0 below the crossover; naive post-filtering falls to recall 0.40-0.42 at 0.1% selectivity.
+
+**Durability:** the SIGKILL test (4 kill rounds under concurrent writes, checkpoints and compactions) verifies about 8,000 acknowledged points and 300 acknowledged deletes per run; six seeds passed.
+
+**SME:** the M5 has SME2, but a prior investigation on this machine found streaming-mode entry costs more than a single-pair distance, and HNSW computes one pair at a time, so quiver does not use it.
 
 ## API
 
@@ -88,15 +130,15 @@ RESULTS_PLACEHOLDER
 
 Distances are "smaller is closer": squared L2, `-dot` for inner product, `1 - cos` for cosine. Filters: `{"field": "color", "eq": "red"}`, `{"field": "price", "gte": 10, "lt": 20}`, `{"field": "tags", "in": ["a", "b"]}`, combined with `{"and": [...]}`, `{"or": [...]}`, `{"not": {...}}`; fields are dotted paths and arrays match if any element does.
 
-Library use:
+Library use ([examples/library.rs](examples/library.rs), `cargo run --release --example library`):
 
 ```rust
-use quiver::collection::{Collection, CollectionConfig, Options, Point, Query};
-use quiver::Metric;
-
-let c = Collection::create("./items".as_ref(), "items", CollectionConfig::new(3, Metric::L2), Options::default())?;
-c.upsert(&[Point { id: 7, vector: vec![0.1, 0.2, 0.3], payload: None }])?;
-let hits = c.search(&Query::new(&[0.1, 0.2, 0.25], 5))?.hits;
+let c = Collection::create(&dir, "items", CollectionConfig::new(3, Metric::L2), Options::default())?;
+c.upsert(&[Point { id: 1, vector: vec![0.1, 0.2, 0.3], payload: Some(json!({"color": "red"})) }])?;
+let red = Filter::parse(&json!({"field": "color", "eq": "red"}))?;
+let mut q = Query::new(&[0.1, 0.2, 0.25], 2);
+q.filter = Some(&red);
+let hits = c.search(&q)?.hits;
 ```
 
 `quiver::HnswIndex` is also usable on its own as an in-memory index.

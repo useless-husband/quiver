@@ -48,22 +48,6 @@ impl Quantization {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_labels() {
-        assert_eq!(Quantization::parse("int8"), Some(Quantization::Int8));
-        assert_eq!(Quantization::parse("pq32"), Some(Quantization::Pq { m: 32 }));
-        assert_eq!(Quantization::parse("pq:8"), Some(Quantization::Pq { m: 8 }));
-        assert_eq!(Quantization::parse("pqx"), None);
-        assert_eq!(Quantization::Pq { m: 16 }.label(), "pq16");
-        let j = serde_json::to_string(&Quantization::Pq { m: 4 }).unwrap();
-        assert_eq!(j, r#"{"type":"pq","m":4}"#);
-    }
-}
-
 use crate::distance::Metric;
 use crate::index::graph::{Scratch, Topology, knn};
 use crate::index::{Neighbor, Space};
@@ -145,5 +129,21 @@ impl Codes {
         r.sort_unstable();
         r.truncate(k);
         r
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_labels() {
+        assert_eq!(Quantization::parse("int8"), Some(Quantization::Int8));
+        assert_eq!(Quantization::parse("pq32"), Some(Quantization::Pq { m: 32 }));
+        assert_eq!(Quantization::parse("pq:8"), Some(Quantization::Pq { m: 8 }));
+        assert_eq!(Quantization::parse("pqx"), None);
+        assert_eq!(Quantization::Pq { m: 16 }.label(), "pq16");
+        let j = serde_json::to_string(&Quantization::Pq { m: 4 }).unwrap();
+        assert_eq!(j, r#"{"type":"pq","m":4}"#);
     }
 }

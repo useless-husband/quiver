@@ -35,7 +35,7 @@ pub struct PqQuery {
 impl Pq {
     /// Trains codebooks on (a sample of) `data` and encodes every row.
     pub fn build(data: &[f32], dim: usize, m: usize, metric: Metric, seed: u64, threads: usize) -> Result<Pq, String> {
-        if m == 0 || dim % m != 0 {
+        if m == 0 || !dim.is_multiple_of(m) {
             return Err(format!("pq: m={m} must divide the dimension {dim}"));
         }
         let rows = data.len() / dim;
@@ -76,7 +76,7 @@ impl Pq {
     }
 
     pub fn from_parts(dim: usize, m: usize, metric: Metric, centroids: Vec<f32>, codes: Vec<u8>) -> Option<Pq> {
-        if m == 0 || dim % m != 0 || centroids.len() != m * KS * (dim / m) || codes.len() % m != 0 {
+        if m == 0 || !dim.is_multiple_of(m) || centroids.len() != m * KS * (dim / m) || !codes.len().is_multiple_of(m) {
             return None;
         }
         Some(Pq { dim, m, dsub: dim / m, metric, centroids, codes })

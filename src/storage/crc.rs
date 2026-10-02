@@ -35,11 +35,11 @@ pub fn crc32c_table(crc: u32, data: &[u8]) -> u32 {
 unsafe fn crc32c_arm(crc: u32, data: &[u8]) -> u32 {
     use core::arch::aarch64::{__crc32cb, __crc32cd};
     let mut c = !crc;
-    let mut chunks = data.chunks_exact(8);
-    for ch in &mut chunks {
-        c = __crc32cd(c, u64::from_le_bytes(ch.try_into().unwrap()));
+    let (chunks, rest) = data.as_chunks::<8>();
+    for ch in chunks {
+        c = __crc32cd(c, u64::from_le_bytes(*ch));
     }
-    for &b in chunks.remainder() {
+    for &b in rest {
         c = __crc32cb(c, b);
     }
     !c

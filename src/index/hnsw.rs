@@ -464,12 +464,12 @@ impl HnswIndex {
         let mut data = Vec::new();
         let mut next = 0u32;
         for id in 0..n as u32 {
-            if let Some(v) = self.vector(id) {
-                if !self.is_deleted(id) {
-                    data.extend_from_slice(v);
-                    map[id as usize] = Some(next);
-                    next += 1;
-                }
+            if let Some(v) = self.vector(id)
+                && !self.is_deleted(id)
+            {
+                data.extend_from_slice(v);
+                map[id as usize] = Some(next);
+                next += 1;
             }
         }
         let fresh = HnswIndex::new(self.dim, self.metric, *self.params(), capacity.max(next as usize));
