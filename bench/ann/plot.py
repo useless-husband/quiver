@@ -110,7 +110,8 @@ def plot(path, rows, theme_name):
             groups.setdefault(c, []).append((float(r["recall"]), float(r["qps"])))
         for (label, slot, marker), pts in sorted(groups.items(), key=lambda kv: kv[0][1]):
             pts.sort()
-            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            # Logit axis: recall 1.0 is drawn at the axis edge (0.9999).
+            xs, ys = [min(p[0], 0.9999) for p in pts], [p[1] for p in pts]
             minx = min(minx, min(xs))
             (h,) = ax.plot(xs, ys, color=t["series"][slot], lw=2, marker=marker, ms=6,
                            mec=t["surface"], mew=1.5, label=label, zorder=3)
@@ -121,12 +122,21 @@ def plot(path, rows, theme_name):
         for s in ("top", "right"):
             ax.spines[s].set_visible(False)
         ax.set_title(f"{th} query thread{'s' if th > 1 else ''}", color=t["text"], loc="left", fontsize=11)
-        ax.set_xlabel("recall@10")
+        ax.set_xlabel("recall@10 (logit scale)")
     axes[0][0].set_ylabel("queries per second (log)")
-    lo = max(0.0, (int(minx * 20) / 20.0))
+    # Points below recall 0.5 (IVF-PQ at small nprobe) are in the CSV but
+    # would squeeze the region where the curves differ.
+    lo = max(0.5, int(minx * 20) / 20.0)
+    from matplotlib.ticker import FixedLocator, FixedFormatter, NullLocator
+    ticks = [x for x in (0.5, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999) if x >= lo]
     for ax in axes[0]:
-        ax.set_xlim(lo, 1.002)
-    fig.suptitle(f"{ds}: recall vs throughput (M=16, efConstruction=200; up and to the right is better)",
+        # Logit scale spreads the high-recall end, where the curves differ.
+        ax.set_xscale("logit")
+        ax.set_xlim(lo, 0.9999)
+        ax.xaxis.set_major_locator(FixedLocator(ticks))
+        ax.xaxis.set_major_formatter(FixedFormatter([("1.0" if x == 0.9999 else f"{x:g}") for x in ticks]))
+        ax.xaxis.set_minor_locator(NullLocator())
+    fig.suptitle(f"{ds}: recall vs throughput (M=16, efConstruction=200; up and right is better)",
                  x=0.01, ha="left", color=t["text"], fontsize=12)
     ordered = [h for _, (slot, h) in sorted(handles.items(), key=lambda kv: kv[1][0])]
     leg = fig.legend(handles=ordered, loc="lower center", ncol=4, frameon=False, fontsize=9,
@@ -136,6 +146,8 @@ def plot(path, rows, theme_name):
     fig.tight_layout(rect=(0, 0.1, 1, 0.95))
     out = path.replace(".csv", f"-{theme_name}.svg")
     fig.savefig(out, facecolor=t["surface"])
+    if os.environ.get("PLOT_PREVIEW"):
+        fig.savefig(os.path.join(os.environ["PLOT_PREVIEW"], os.path.basename(out) + ".png"), facecolor=t["surface"], dpi=80)
     plt.close(fig)
     print("wrote", out)
 
