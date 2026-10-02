@@ -139,7 +139,7 @@ pub(crate) fn prefetch_read<T>(p: *const T) {
     #[cfg(target_arch = "x86_64")]
     // SAFETY: as above, PREFETCHT0 never faults.
     unsafe {
-        core::arch::x86_64::_mm_prefetch(p as *const i8, core::arch::x86_64::_MM_HINT_T0);
+        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(p as *const i8);
     }
     #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
     let _ = p;

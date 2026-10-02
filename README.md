@@ -64,7 +64,7 @@ The `plan` field shows, per segment, how many rows matched the filter and which 
  search ─► per segment: filter bitset ─► brute force or HNSW (± quantized + re-rank) ─► merge
 ```
 
-- **Concurrency.** Link lists are atomic arrays: writers lock one node at a time, readers take no locks and rely on `Release`/`Acquire` ordering, so a reader can see a stale neighbourhood but never an uninitialised node. A stress test found a real race (a new node linking to itself) that hnswlib also has; it is fixed and covered.
+- **Concurrency.** Link lists are atomic arrays: writers lock one node at a time, readers take no locks and rely on `Release`/`Acquire` ordering, so a reader can see a stale neighbourhood but never an uninitialised node. A stress test found a real race (a new node could select itself as a neighbour; hnswlib raises an exception in the same situation); it is fixed and covered.
 - **Durability.** A write is logged and synced before it touches memory and is answered after it has been applied. Concurrent writers share syncs. Races on the same id are resolved by log sequence number, so memory always matches a sequential replay of the log.
 - **Filtering.** Each segment evaluates a filter to an exact bitset through its payload index. Brute force over `matched` rows costs about `matched` distances; a filtered graph search costs about `ef * 2M * live / matched`; quiver picks brute force below the crossover `sqrt(ef * 2M * live)`.
 

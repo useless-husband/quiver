@@ -50,12 +50,12 @@ unsafe fn crc32c_arm(crc: u32, data: &[u8]) -> u32 {
 unsafe fn crc32c_x86(crc: u32, data: &[u8]) -> u32 {
     use core::arch::x86_64::{_mm_crc32_u8, _mm_crc32_u64};
     let mut c = !crc as u64;
-    let mut chunks = data.chunks_exact(8);
-    for ch in &mut chunks {
-        c = _mm_crc32_u64(c, u64::from_le_bytes(ch.try_into().unwrap()));
+    let (chunks, rest) = data.as_chunks::<8>();
+    for ch in chunks {
+        c = _mm_crc32_u64(c, u64::from_le_bytes(*ch));
     }
     let mut c = c as u32;
-    for &b in chunks.remainder() {
+    for &b in rest {
         c = _mm_crc32_u8(c, b);
     }
     !c
