@@ -82,6 +82,10 @@ impl Pq {
         Some(Pq { dim, m, dsub: dim / m, metric, centroids, codes })
     }
 
+    pub fn dim(&self) -> usize {
+        self.dim
+    }
+
     pub fn m(&self) -> usize {
         self.m
     }

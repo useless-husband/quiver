@@ -29,10 +29,10 @@ impl Bitset {
 
     fn trim(&mut self) {
         let rem = self.len % 64;
-        if rem != 0 {
-            if let Some(last) = self.words.last_mut() {
-                *last &= (1u64 << rem) - 1;
-            }
+        if rem != 0
+            && let Some(last) = self.words.last_mut()
+        {
+            *last &= (1u64 << rem) - 1;
         }
     }
 

@@ -59,10 +59,6 @@ impl Args {
         }
     }
 
-    pub fn flag(&self, key: &str) -> bool {
-        self.str(key).is_some_and(|v| v != "false")
-    }
-
     /// A comma-separated list.
     pub fn list<T: FromStr + Clone>(&self, key: &str, default: &[T]) -> Result<Vec<T>, String> {
         match self.str(key) {
@@ -99,7 +95,7 @@ mod tests {
         assert_eq!(a.positional, vec!["ann", "x"]);
         assert_eq!(a.get("m", 0usize).unwrap(), 16);
         assert_eq!(a.list::<usize>("ef", &[]).unwrap(), vec![10, 20]);
-        assert!(a.flag("verbose"));
+        assert_eq!(a.str("verbose").as_deref(), Some("true"));
         assert!(a.finish().is_err()); // --k unused
         assert_eq!(a.get("k", 0usize).unwrap(), 5);
         assert!(a.finish().is_ok());

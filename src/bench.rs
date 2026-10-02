@@ -31,7 +31,7 @@ pub fn read_fbin(path: &Path) -> Result<(usize, usize, Vec<f32>)> {
     let mut buf = Vec::new();
     std::fs::File::open(path)?.read_to_end(&mut buf)?;
     let (n, d) = header(&buf, path, 4)?;
-    let data = buf[8..].chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+    let data = buf[8..].as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
     Ok((n, d, data))
 }
 
@@ -40,7 +40,7 @@ pub fn read_ibin(path: &Path) -> Result<(usize, usize, Vec<u32>)> {
     let mut buf = Vec::new();
     std::fs::File::open(path)?.read_to_end(&mut buf)?;
     let (n, k) = header(&buf, path, 4)?;
-    let data = buf[8..].chunks_exact(4).map(|c| i32::from_le_bytes(c.try_into().unwrap()) as u32).collect();
+    let data = buf[8..].as_chunks::<4>().0.iter().map(|c| i32::from_le_bytes(*c) as u32).collect();
     Ok((n, k, data))
 }
 

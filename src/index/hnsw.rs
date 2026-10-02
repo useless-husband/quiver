@@ -74,7 +74,7 @@ unsafe impl Send for F32Space<'_> {}
 impl<'a> F32Space<'a> {
     /// A space over an immutable slice of `rows * dim` prepared vectors.
     pub fn over(data: &'a [f32], dim: usize, metric: Metric) -> F32Space<'a> {
-        assert!(dim > 0 && data.len() % dim == 0);
+        assert!(dim > 0 && data.len().is_multiple_of(dim));
         F32Space { base: data.as_ptr(), dim, rows: data.len() / dim, metric, k: kernels(), _life: PhantomData }
     }
 
@@ -263,7 +263,7 @@ impl HnswIndex {
     /// Adds `data.len() / dim` vectors using `threads` threads. Row ids are
     /// consecutive and in input order; returns the first one.
     pub fn insert_batch(&self, data: &[f32], threads: usize) -> Result<u32> {
-        if data.len() % self.dim != 0 {
+        if !data.len().is_multiple_of(self.dim) {
             return invalid("batch length is not a multiple of the dimension");
         }
         let n = data.len() / self.dim;
