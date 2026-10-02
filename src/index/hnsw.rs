@@ -103,8 +103,16 @@ impl Space for F32Space<'_> {
     #[inline]
     fn prefetch(&self, id: u32) {
         if (id as usize) < self.rows {
-            // SAFETY: in bounds; prefetch never dereferences.
-            super::prefetch_read(unsafe { self.base.add(id as usize * self.dim) });
+            // Prefetch the whole vector (128-byte lines): one line only covers
+            // 32 dimensions, and a high-dimensional search is bound by memory
+            // latency, not arithmetic.
+            // SAFETY: every address is inside row `id`; prefetch never faults.
+            let p = unsafe { self.base.add(id as usize * self.dim) } as *const u8;
+            let mut off = 0;
+            while off < self.dim * 4 {
+                super::prefetch_read(unsafe { p.add(off) });
+                off += 128;
+            }
         }
     }
 }
